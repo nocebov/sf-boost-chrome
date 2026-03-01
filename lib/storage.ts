@@ -1,0 +1,52 @@
+const DEFAULTS = {
+  enabledModules: ['command-palette', 'field-inspector', 'quick-copy'] as string[],
+  orgSettings: {} as Record<string, OrgSettings>,
+};
+
+export interface OrgSettings {
+  label?: string;
+  bannerColor?: string;
+  bannerTextColor?: string;
+  showBanner?: boolean;
+}
+
+export async function getEnabledModules(): Promise<string[]> {
+  const result = await chrome.storage.sync.get('enabledModules');
+  return (result.enabledModules as string[] | undefined) ?? DEFAULTS.enabledModules;
+}
+
+export async function setEnabledModules(ids: string[]): Promise<void> {
+  await chrome.storage.sync.set({ enabledModules: ids });
+}
+
+export async function getOrgSettings(domain: string): Promise<OrgSettings> {
+  const result = await chrome.storage.sync.get('orgSettings');
+  const all = (result.orgSettings as Record<string, OrgSettings> | undefined) ?? {};
+  return all[domain] ?? {};
+}
+
+export async function setOrgSettings(domain: string, settings: OrgSettings): Promise<void> {
+  const result = await chrome.storage.sync.get('orgSettings');
+  const all = (result.orgSettings as Record<string, OrgSettings> | undefined) ?? {};
+  all[domain] = { ...all[domain], ...settings };
+  await chrome.storage.sync.set({ orgSettings: all });
+}
+
+// Describe cache with TTL (1 hour)
+const CACHE_TTL = 60 * 60 * 1000;
+
+export async function getCachedDescribe(key: string): Promise<any | null> {
+  const result = await chrome.storage.local.get('describeCache');
+  const cache = result.describeCache as Record<string, { data: any; cachedAt: number }> | undefined;
+  const entry = cache?.[key];
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > CACHE_TTL) return null;
+  return entry.data;
+}
+
+export async function setCachedDescribe(key: string, data: any): Promise<void> {
+  const result = await chrome.storage.local.get('describeCache');
+  const cache = (result.describeCache as Record<string, { data: any; cachedAt: number }> | undefined) ?? {};
+  cache[key] = { data, cachedAt: Date.now() };
+  await chrome.storage.local.set({ describeCache: cache });
+}
