@@ -17,11 +17,15 @@ export interface MessageMap {
 
 export type MessageType = keyof MessageMap;
 
-export function sendMessage<T extends MessageType>(
+export async function sendMessage<T extends MessageType>(
   type: T,
   data: MessageMap[T]['data']
 ): Promise<MessageMap[T]['response']> {
-  return chrome.runtime.sendMessage({ type, data });
+  const response = await chrome.runtime.sendMessage({ type, data });
+  if (response && typeof response === 'object' && '__error' in response) {
+    throw new Error(response.__error);
+  }
+  return response;
 }
 
 export function onMessage<T extends MessageType>(

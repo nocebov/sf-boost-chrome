@@ -6,6 +6,7 @@ export interface PaletteCommand {
   path?: string;
   action?: () => void;
   icon?: string;
+  subMode?: string;
 }
 
 export const SETUP_COMMANDS: PaletteCommand[] = [
@@ -25,6 +26,7 @@ export const SETUP_COMMANDS: PaletteCommand[] = [
   { id: 'picklist-values', label: 'Picklist Value Sets', keywords: ['picklist', 'global value set'], category: 'setup', path: '/lightning/setup/Picklists/home', icon: '\u{1F4DD}' },
 
   // Automation
+  { id: 'find-flow', label: 'Find Flow', keywords: ['search flow', 'flow builder', 'flow name', 'automation'], category: 'action', icon: '\u{1F50E}', subMode: 'flow-search' },
   { id: 'flows', label: 'Flows', keywords: ['flow builder', 'automation', 'process'], category: 'setup', path: '/lightning/setup/Flows/home', icon: '\u{26A1}' },
   { id: 'process-auto', label: 'Process Automation Settings', keywords: ['process builder', 'workflow'], category: 'setup', path: '/lightning/setup/WorkflowSettings/home', icon: '\u{2699}' },
   { id: 'approval-processes', label: 'Approval Processes', keywords: ['approval'], category: 'setup', path: '/lightning/setup/ApprovalProcesses/home', icon: '\u{2705}' },

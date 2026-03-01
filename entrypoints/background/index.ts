@@ -4,19 +4,19 @@ import { describeObject, executeSOQL } from './api-client';
 
 export default defineBackground(() => {
   // Handle session requests
-  onMessage('getSession', async ({ data }) => {
+  onMessage('getSession', async (data) => {
     return getSessionFromCookie(data.instanceUrl);
   });
 
   // Handle describe object requests
-  onMessage('describeObject', async ({ data }) => {
+  onMessage('describeObject', async (data) => {
     const session = await getSessionFromCookie(data.instanceUrl);
     if (!session) throw new Error('No active Salesforce session');
     return describeObject(data.instanceUrl, session.sessionId, data.objectApiName);
   });
 
   // Handle SOQL query requests
-  onMessage('executeSOQL', async ({ data }) => {
+  onMessage('executeSOQL', async (data) => {
     const session = await getSessionFromCookie(data.instanceUrl);
     if (!session) throw new Error('No active Salesforce session');
     return executeSOQL(data.instanceUrl, session.sessionId, data.query);
