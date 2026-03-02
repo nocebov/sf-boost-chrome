@@ -43,7 +43,9 @@ class ModuleRegistry {
   async disableModule(id: string): Promise<void> {
     const mod = this.activeModules.get(id);
     if (mod) {
-      mod.destroy();
+      try { mod.destroy(); } catch (e) {
+        console.error(`[SF Boost] Module "${id}" destroy error:`, e);
+      }
       this.activeModules.delete(id);
     }
   }
@@ -51,14 +53,20 @@ class ModuleRegistry {
   async enableModule(id: string, ctx: ModuleContext): Promise<void> {
     const mod = this.modules.get(id);
     if (mod && !this.activeModules.has(id)) {
-      await mod.init(ctx);
-      this.activeModules.set(id, mod);
+      try {
+        await mod.init(ctx);
+        this.activeModules.set(id, mod);
+      } catch (e) {
+        console.error(`[SF Boost] Failed to enable module "${id}":`, e);
+      }
     }
   }
 
   destroyAll(): void {
     for (const mod of this.activeModules.values()) {
-      mod.destroy();
+      try { mod.destroy(); } catch (e) {
+        console.error(`[SF Boost] Module "${mod.id}" destroy error:`, e);
+      }
     }
     this.activeModules.clear();
   }

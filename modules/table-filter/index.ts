@@ -7,7 +7,8 @@ const CONTAINER_CLASS = 'sfboost-table-filter';
 let observer: MutationObserver | null = null;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
 let initTimer: ReturnType<typeof setTimeout> | null = null;
-const rowTextCache = new WeakMap<HTMLTableRowElement, string>();
+let rowTextCache = new WeakMap<HTMLTableRowElement, string>();
+const activeDebounces = new Set<ReturnType<typeof setTimeout>>();
 
 // --- Table Detection ---
 
@@ -143,12 +144,14 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   // Debounced filter
   let debounce: ReturnType<typeof setTimeout> | null = null;
   const onInput = () => {
-    if (debounce) clearTimeout(debounce);
+    if (debounce) { clearTimeout(debounce); activeDebounces.delete(debounce); }
     debounce = setTimeout(() => {
+      activeDebounces.delete(debounce!);
       const query = input.value;
       filterTable(table, query, count);
       clearBtn.style.display = query.trim() ? 'block' : 'none';
     }, 150);
+    activeDebounces.add(debounce);
   };
 
   input.addEventListener('input', onInput);
@@ -250,10 +253,20 @@ function scanAndInject(): void {
 function startObserver(): void {
   if (observer) return;
   observer = new MutationObserver(() => {
-    if (scanTimer) clearTimeout(scanTimer);
-    scanTimer = setTimeout(scanAndInject, 500);
+    // Invalidate text cache on any DOM change
+    rowTextCache = new WeakMap();
+    // Throttle: only schedule a scan if one isn't already pending
+    if (!scanTimer) {
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        scanAndInject();
+      }, 500);
+    }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Prefer a narrower observe target when available
+  const root = document.querySelector('.oneContent, .mainContentMark, #content') ?? document.body;
+  observer.observe(root, { childList: true, subtree: true });
 }
 
 function stopObserver(): void {
@@ -265,6 +278,11 @@ function stopObserver(): void {
 // --- Cleanup ---
 
 function removeAllFilters(): void {
+  // Cancel pending debounce timers
+  for (const t of activeDebounces) clearTimeout(t);
+  activeDebounces.clear();
+  // Drop stale text cache
+  rowTextCache = new WeakMap();
   // Remove filter UI containers
   document.querySelectorAll(`.${CONTAINER_CLASS}`).forEach(el => el.remove());
   // Reset hidden rows

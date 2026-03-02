@@ -105,34 +105,55 @@ function createPaletteUI() {
   let mode: 'commands' | 'flow-search' = 'commands';
   let flowCommands: PaletteCommand[] = [];
 
+  function renderMessage(text: string, color = '#9ca3af') {
+    results.textContent = '';
+    const div = document.createElement('div');
+    div.setAttribute('style', `padding: 20px; text-align: center; color: ${color};`);
+    div.textContent = text;
+    results.appendChild(div);
+  }
+
   function renderResults(commands: PaletteCommand[]) {
     currentCommands = commands;
     selectedIndex = Math.min(selectedIndex, Math.max(0, commands.length - 1));
-    results.innerHTML = commands.length === 0
-      ? '<div style="padding: 20px; text-align: center; color: #9ca3af;">No results found</div>'
-      : commands.map((cmd, i) => `
-        <div class="sfboost-palette-item" data-index="${i}" style="
-          padding: 10px 20px;
-          cursor: pointer;
-          display: flex; align-items: center; gap: 10px;
-          background: ${i === selectedIndex ? '#f0f4ff' : 'transparent'};
-          transition: background 0.1s;
-        ">
-          <span style="font-size: 16px; width: 24px; text-align: center;">${cmd.icon ?? '>'}</span>
-          <div style="flex: 1; min-width: 0;">
-            <div style="font-size: 14px; font-weight: 500; color: #1a1a2e;">${cmd.label}</div>
-            <div style="font-size: 11px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${cmd.category}</div>
-          </div>
-        </div>
-      `).join('');
-  }
+    results.textContent = '';
 
-  function renderLoading() {
-    results.innerHTML = '<div style="padding: 20px; text-align: center; color: #9ca3af;">Loading flows...</div>';
-  }
+    if (commands.length === 0) {
+      renderMessage('No results found');
+      return;
+    }
 
-  function renderError(message: string) {
-    results.innerHTML = `<div style="padding: 20px; text-align: center; color: #ef4444;">${message}</div>`;
+    for (let i = 0; i < commands.length; i++) {
+      const cmd = commands[i]!;
+      const row = document.createElement('div');
+      row.className = 'sfboost-palette-item';
+      row.dataset.index = String(i);
+      row.setAttribute('style', `
+        padding: 10px 20px; cursor: pointer;
+        display: flex; align-items: center; gap: 10px;
+        background: ${i === selectedIndex ? '#f0f4ff' : 'transparent'};
+        transition: background 0.1s;
+      `);
+
+      const icon = document.createElement('span');
+      icon.setAttribute('style', 'font-size: 16px; width: 24px; text-align: center;');
+      icon.textContent = cmd.icon ?? '>';
+
+      const info = document.createElement('div');
+      info.setAttribute('style', 'flex: 1; min-width: 0;');
+
+      const label = document.createElement('div');
+      label.setAttribute('style', 'font-size: 14px; font-weight: 500; color: #1a1a2e;');
+      label.textContent = cmd.label;
+
+      const cat = document.createElement('div');
+      cat.setAttribute('style', 'font-size: 11px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
+      cat.textContent = cmd.category;
+
+      info.append(label, cat);
+      row.append(icon, info);
+      results.appendChild(row);
+    }
   }
 
   async function enterFlowSearch() {
@@ -142,12 +163,20 @@ function createPaletteUI() {
     selectedIndex = 0;
 
     subModeHeader.style.display = 'flex';
-    subModeHeader.innerHTML = '<span>\u2190</span><span>\u{26A1} Find Flow</span><span style="margin-left: auto; font-size: 11px; color: #9ca3af;">Esc to go back</span>';
+    subModeHeader.textContent = '';
+    const back = document.createElement('span');
+    back.textContent = '\u2190';
+    const title = document.createElement('span');
+    title.textContent = '\u{26A1} Find Flow';
+    const hint = document.createElement('span');
+    hint.setAttribute('style', 'margin-left: auto; font-size: 11px; color: #9ca3af;');
+    hint.textContent = 'Esc to go back';
+    subModeHeader.append(back, title, hint);
 
-    renderLoading();
+    renderMessage('Loading flows...');
 
     if (!currentCtx) {
-      renderError('No Salesforce context available');
+      renderMessage('No Salesforce context available', '#ef4444');
       return;
     }
 
@@ -161,7 +190,7 @@ function createPaletteUI() {
       flowCommands = flowsToCommands(records);
       renderResults(flowCommands.slice(0, 15));
     } catch (e: any) {
-      renderError(`Failed to load flows: ${e?.message ?? 'Unknown error'}`);
+      renderMessage(`Failed to load flows: ${e?.message ?? 'Unknown error'}`, '#ef4444');
     }
   }
 

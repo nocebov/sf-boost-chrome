@@ -32,8 +32,9 @@ export async function setOrgSettings(domain: string, settings: OrgSettings): Pro
   await chrome.storage.sync.set({ orgSettings: all });
 }
 
-// Describe cache with TTL (1 hour)
+// Describe cache with TTL (1 hour) and max entries
 const CACHE_TTL = 60 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 25;
 
 export async function getCachedDescribe(key: string): Promise<any | null> {
   const result = await chrome.storage.local.get('describeCache');
@@ -47,6 +48,23 @@ export async function getCachedDescribe(key: string): Promise<any | null> {
 export async function setCachedDescribe(key: string, data: any): Promise<void> {
   const result = await chrome.storage.local.get('describeCache');
   const cache = (result.describeCache as Record<string, { data: any; cachedAt: number }> | undefined) ?? {};
-  cache[key] = { data, cachedAt: Date.now() };
+  const now = Date.now();
+
+  // Evict expired entries
+  for (const k of Object.keys(cache)) {
+    if (now - cache[k]!.cachedAt > CACHE_TTL) delete cache[k];
+  }
+
+  cache[key] = { data, cachedAt: now };
+
+  // Evict oldest entries if over limit
+  const keys = Object.keys(cache);
+  if (keys.length > MAX_CACHE_ENTRIES) {
+    keys.sort((a, b) => cache[a]!.cachedAt - cache[b]!.cachedAt);
+    for (const k of keys.slice(0, keys.length - MAX_CACHE_ENTRIES)) {
+      delete cache[k];
+    }
+  }
+
   await chrome.storage.local.set({ describeCache: cache });
 }

@@ -9,6 +9,10 @@ import '../../modules/field-inspector';
 import '../../modules/quick-copy';
 import '../../modules/table-filter';
 
+declare global {
+  interface Window { __sfBoostLoaded?: boolean; }
+}
+
 function buildPageContext(): SFPageContext {
   const { hostname, pathname, href } = window.location;
   const orgInfo = detectOrgType(hostname);
@@ -35,6 +39,10 @@ export default defineContentScript({
   runAt: 'document_idle',
 
   async main() {
+    // Prevent double-injection on extension reload
+    if (window.__sfBoostLoaded) return;
+    window.__sfBoostLoaded = true;
+
     const pageContext = buildPageContext();
     const enabledIds = await getEnabledModules();
     const ctx = { pageContext };
@@ -66,9 +74,9 @@ export default defineContentScript({
       checkNavigation();
     };
 
-    window.addEventListener('popstate', () => checkNavigation());
+    window.addEventListener('popstate', checkNavigation);
 
-    // Polling fallback for Lightning SPA
+    // Polling fallback — catches edge cases History API patching misses
     setInterval(checkNavigation, 1000);
 
     // Listen for background commands

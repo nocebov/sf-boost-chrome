@@ -1,11 +1,14 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
+import { showToast } from '../../lib/toast';
 
 const BADGE_CLASS = 'sfboost-field-badge';
 const TOGGLE_ID = 'sfboost-inspector-toggle';
 let isActive = false;
 let currentCtx: ModuleContext | null = null;
+
+function onToggleInspector() { toggleInspector(); }
 
 function createToggleButton() {
   const existing = document.getElementById(TOGGLE_ID);
@@ -55,7 +58,7 @@ async function showFieldBadges() {
   if (!currentCtx) return;
   const { objectApiName, instanceUrl } = currentCtx.pageContext;
   if (!objectApiName) {
-    showInspectorToast('No object detected on this page');
+    showToast('No object detected on this page', 'right');
     return;
   }
 
@@ -63,7 +66,7 @@ async function showFieldBadges() {
   try {
     describeData = await sendMessage('describeObject', { instanceUrl, objectApiName });
   } catch (e: any) {
-    showInspectorToast(`Error: ${e.message}`);
+    showToast(`Error: ${e.message}`, 'right');
     return;
   }
 
@@ -91,7 +94,8 @@ async function showFieldBadges() {
 
   let matched = 0;
   labelElements.forEach((el) => {
-    const labelText = (el.textContent ?? '').toLowerCase().trim();
+    // Strip trailing *, :, and whitespace that Salesforce adds for required/formatting
+    const labelText = (el.textContent ?? '').replace(/[\s*:]+$/, '').toLowerCase().trim();
     const fieldInfo = fieldMap.get(labelText);
     if (!fieldInfo) return;
 
@@ -117,12 +121,18 @@ async function showFieldBadges() {
     badge.textContent = fieldInfo.apiName;
     badge.title = `Type: ${fieldInfo.type}${fieldInfo.required ? ' | Required' : ''}\nClick to copy`;
 
-    badge.addEventListener('click', (e) => {
+    badge.addEventListener('click', async (e) => {
       e.stopPropagation();
-      navigator.clipboard.writeText(fieldInfo.apiName);
-      badge.textContent = 'Copied!';
-      badge.style.background = '#2ecc71';
-      badge.style.color = '#fff';
+      try {
+        await navigator.clipboard.writeText(fieldInfo.apiName);
+        badge.textContent = 'Copied!';
+        badge.style.background = '#2ecc71';
+        badge.style.color = '#fff';
+      } catch {
+        badge.textContent = 'Failed';
+        badge.style.background = '#ef4444';
+        badge.style.color = '#fff';
+      }
       setTimeout(() => {
         badge.textContent = fieldInfo.apiName;
         badge.style.background = '#e8f0fe';
@@ -134,29 +144,11 @@ async function showFieldBadges() {
     matched++;
   });
 
-  showInspectorToast(`Matched ${matched} fields on ${objectApiName}`);
+  showToast(`Matched ${matched} fields on ${objectApiName}`, 'right');
 }
 
 function removeFieldBadges() {
   document.querySelectorAll(`.${BADGE_CLASS}`).forEach((el) => el.remove());
-}
-
-function showInspectorToast(message: string) {
-  const toast = document.createElement('div');
-  toast.setAttribute('style', `
-    position: fixed; bottom: 72px; right: 20px;
-    background: #1a1a2e; color: #fff;
-    padding: 8px 16px; border-radius: 8px;
-    font-size: 12px; font-family: -apple-system, sans-serif;
-    z-index: 999998;
-  `);
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2500);
 }
 
 const fieldInspector: SFBoostModule = {
@@ -170,7 +162,7 @@ const fieldInspector: SFBoostModule = {
     if (ctx.pageContext.pageType === 'record') {
       createToggleButton();
     }
-    document.addEventListener('sfboost:toggle-inspector', () => toggleInspector());
+    document.addEventListener('sfboost:toggle-inspector', onToggleInspector);
     document.addEventListener('keydown', handleKeydown);
   },
 
@@ -192,6 +184,7 @@ const fieldInspector: SFBoostModule = {
   destroy() {
     removeFieldBadges();
     document.getElementById(TOGGLE_ID)?.remove();
+    document.removeEventListener('sfboost:toggle-inspector', onToggleInspector);
     document.removeEventListener('keydown', handleKeydown);
     isActive = false;
   },

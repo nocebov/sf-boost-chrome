@@ -13,39 +13,59 @@ const ALL_MODULES: ModuleInfo[] = [
   { id: 'table-filter', name: 'Table Filter', description: 'Quick search for tables' },
 ];
 
+const container = document.getElementById('modules');
+
 async function render() {
-  const container = document.getElementById('modules');
   if (!container) return;
 
   const enabledIds = await getEnabledModules();
+  container.textContent = '';
 
-  container.innerHTML = ALL_MODULES.map(
-    (mod) => `
-    <div class="module-item">
-      <div class="module-info">
-        <span class="module-name">${mod.name}</span>
-        <span class="module-desc">${mod.description}</span>
-      </div>
-      <label class="toggle">
-        <input type="checkbox" data-module="${mod.id}" ${enabledIds.includes(mod.id) ? 'checked' : ''}>
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-  `
-  ).join('');
+  for (const mod of ALL_MODULES) {
+    const item = document.createElement('div');
+    item.className = 'module-item';
 
-  container.addEventListener('change', async (e) => {
-    const target = e.target as HTMLInputElement;
-    const moduleId = target.dataset.module;
-    if (!moduleId) return;
+    const info = document.createElement('div');
+    info.className = 'module-info';
 
-    const current = await getEnabledModules();
-    const updated = target.checked
-      ? [...current, moduleId]
-      : current.filter((id) => id !== moduleId);
+    const name = document.createElement('span');
+    name.className = 'module-name';
+    name.textContent = mod.name;
 
-    await setEnabledModules(updated);
-  });
+    const desc = document.createElement('span');
+    desc.className = 'module-desc';
+    desc.textContent = mod.description;
+
+    info.append(name, desc);
+
+    const label = document.createElement('label');
+    label.className = 'toggle';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.module = mod.id;
+    checkbox.checked = enabledIds.includes(mod.id);
+
+    const slider = document.createElement('span');
+    slider.className = 'toggle-slider';
+
+    label.append(checkbox, slider);
+    item.append(info, label);
+    container.appendChild(item);
+  }
 }
+
+container?.addEventListener('change', async (e) => {
+  const target = e.target as HTMLInputElement;
+  const moduleId = target.dataset.module;
+  if (!moduleId) return;
+
+  const current = await getEnabledModules();
+  const updated = target.checked
+    ? [...current, moduleId]
+    : current.filter((id) => id !== moduleId);
+
+  await setEnabledModules(updated);
+});
 
 render();

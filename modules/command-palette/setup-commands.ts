@@ -1,3 +1,5 @@
+import { showToast } from '../../lib/toast';
+
 export interface PaletteCommand {
   id: string;
   label: string;
@@ -107,23 +109,3 @@ export const SETUP_COMMANDS: PaletteCommand[] = [
     showToast('URL copied!');
   }, icon: '\u{1F517}' },
 ];
-
-function showToast(message: string) {
-  const toast = document.createElement('div');
-  toast.setAttribute('style', `
-    position: fixed; bottom: 20px; left: 50%;
-    transform: translateX(-50%);
-    background: #1a1a2e; color: #fff;
-    padding: 10px 20px; border-radius: 8px;
-    font-size: 13px; font-family: -apple-system, sans-serif;
-    z-index: 99999999;
-    animation: sfboost-toast-in 0.2s ease-out;
-  `);
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
-}

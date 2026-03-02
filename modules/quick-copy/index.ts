@@ -1,27 +1,10 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
+import { showToast } from '../../lib/toast';
 
 const COPY_BTN_CLASS = 'sfboost-copy-btn';
 let currentCtx: ModuleContext | null = null;
-
-function showToast(message: string) {
-  const toast = document.createElement('div');
-  toast.setAttribute('style', `
-    position: fixed; bottom: 20px; left: 50%;
-    transform: translateX(-50%);
-    background: #1a1a2e; color: #fff;
-    padding: 10px 20px; border-radius: 8px;
-    font-size: 13px; font-family: -apple-system, sans-serif;
-    z-index: 99999999;
-  `);
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s';
-    setTimeout(() => toast.remove(), 300);
-  }, 2000);
-}
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function createCopyButton(text: string, tooltip: string): HTMLButtonElement {
   const btn = document.createElement('button');
@@ -53,23 +36,28 @@ function createCopyButton(text: string, tooltip: string): HTMLButtonElement {
     btn.style.color = '#6b7280';
   });
 
-  btn.addEventListener('click', (e) => {
+  btn.addEventListener('click', async (e) => {
     e.stopPropagation();
     e.preventDefault();
-    navigator.clipboard.writeText(text);
-    showToast(`Copied: ${text.length > 40 ? text.slice(0, 40) + '...' : text}`);
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(`Copied: ${text.length > 40 ? text.slice(0, 40) + '...' : text}`);
+    } catch {
+      showToast('Failed to copy to clipboard');
+    }
   });
 
   return btn;
 }
 
-function injectRecordIdCopyButton() {
-  if (!currentCtx) return;
+/** Try to inject the copy button. Returns true if the header was found. */
+function injectRecordIdCopyButton(): boolean {
+  if (!currentCtx) return false;
   const { recordId } = currentCtx.pageContext;
-  if (!recordId) return;
+  if (!recordId) return false;
 
   // Already injected?
-  if (document.querySelector(`.${COPY_BTN_CLASS}[data-sfboost-record-id]`)) return;
+  if (document.querySelector(`.${COPY_BTN_CLASS}[data-sfboost-record-id]`)) return true;
 
   // Find the record header
   const header = document.querySelector(
@@ -81,15 +69,33 @@ function injectRecordIdCopyButton() {
     'records-entity-label'
   );
 
-  if (header) {
-    const btn = createCopyButton(recordId, `Copy Record ID: ${recordId}`);
-    btn.setAttribute('data-sfboost-record-id', 'true');
-    header.parentElement?.insertBefore(btn, header.nextSibling);
-  }
+  if (!header) return false;
+
+  const btn = createCopyButton(recordId, `Copy Record ID: ${recordId}`);
+  btn.setAttribute('data-sfboost-record-id', 'true');
+  header.parentElement?.insertBefore(btn, header.nextSibling);
+  return true;
 }
 
 function removeCopyButtons() {
   document.querySelectorAll(`.${COPY_BTN_CLASS}`).forEach((el) => el.remove());
+}
+
+function cancelRetry() {
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+}
+
+/** Retry injection until header is found or attempts exhausted. */
+function scheduleInject(attempts = 8, delay = 400) {
+  cancelRetry();
+  // Try immediately first
+  if (injectRecordIdCopyButton()) return;
+  let left = attempts - 1;
+  const tryAgain = () => {
+    if (injectRecordIdCopyButton() || left-- <= 0) { retryTimer = null; return; }
+    retryTimer = setTimeout(tryAgain, delay);
+  };
+  retryTimer = setTimeout(tryAgain, delay);
 }
 
 const quickCopy: SFBoostModule = {
@@ -101,20 +107,21 @@ const quickCopy: SFBoostModule = {
   async init(ctx: ModuleContext) {
     currentCtx = ctx;
     if (ctx.pageContext.pageType === 'record') {
-      // Wait a bit for DOM to settle in Lightning
-      setTimeout(() => injectRecordIdCopyButton(), 1000);
+      scheduleInject();
     }
   },
 
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
+    cancelRetry();
     removeCopyButtons();
     if (ctx.pageContext.pageType === 'record') {
-      setTimeout(() => injectRecordIdCopyButton(), 1000);
+      scheduleInject();
     }
   },
 
   destroy() {
+    cancelRetry();
     removeCopyButtons();
   },
 };
