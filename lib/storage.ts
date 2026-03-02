@@ -1,5 +1,5 @@
 const DEFAULTS = {
-  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter'] as string[],
+  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter', 'environment-safeguard'] as string[],
   orgSettings: {} as Record<string, OrgSettings>,
 };
 
@@ -8,6 +8,10 @@ export interface OrgSettings {
   bannerColor?: string;
   bannerTextColor?: string;
   showBanner?: boolean;
+  badgeEnabled?: boolean;
+  badgeColor?: string;
+  badgeTextColor?: string;
+  badgeLabel?: string;
 }
 
 export async function getEnabledModules(): Promise<string[]> {

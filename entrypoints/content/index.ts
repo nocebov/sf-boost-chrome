@@ -8,6 +8,11 @@ import '../../modules/command-palette';
 import '../../modules/field-inspector';
 import '../../modules/quick-copy';
 import '../../modules/table-filter';
+import '../../modules/environment-safeguard';
+import '../../modules/deep-dependency-inspector';
+import '../../modules/change-set-buddy';
+import '../../modules/profile-to-permset';
+import '../../modules/flow-guardian';
 
 declare global {
   interface Window { __sfBoostLoaded?: boolean; }

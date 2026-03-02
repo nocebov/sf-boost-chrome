@@ -13,6 +13,32 @@ export interface MessageMap {
     data: { instanceUrl: string; query: string };
     response: any;
   };
+  executeToolingQuery: {
+    data: { instanceUrl: string; query: string };
+    response: any;
+  };
+  createPermissionSet: {
+    data: {
+      instanceUrl: string;
+      name: string;
+      label: string;
+      objectPermissions: Array<{
+        object: string;
+        allowRead: boolean;
+        allowCreate: boolean;
+        allowEdit: boolean;
+        allowDelete: boolean;
+        viewAllRecords: boolean;
+        modifyAllRecords: boolean;
+      }>;
+      fieldPermissions: Array<{
+        field: string;
+        readable: boolean;
+        editable: boolean;
+      }>;
+    };
+    response: { id: string; success: boolean };
+  };
 }
 
 export type MessageType = keyof MessageMap;
