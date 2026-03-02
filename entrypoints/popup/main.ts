@@ -15,7 +15,7 @@ const ALL_MODULES: ModuleInfo[] = [
   { id: 'deep-dependency-inspector', name: 'Dependency Inspector', description: 'Deep scan where components are used' },
   { id: 'change-set-buddy', name: 'Change Set Buddy', description: 'Enhanced Change Set experience' },
   { id: 'profile-to-permset', name: 'Profile to PermSet', description: 'Extract Profile permissions to Permission Set' },
-  { id: 'flow-guardian', name: 'Flow Guardian', description: 'Detect SOQL-in-loop & missing null checks' },
+  { id: 'hide-devops-bar', name: 'Hide DevOps Center Bar', description: 'Removes the DevOps Center navigation bar' },
 ];
 
 const container = document.getElementById('modules');

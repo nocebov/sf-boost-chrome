@@ -156,7 +156,7 @@ async function runDeepScan(): Promise<void> {
   // Display name from page header (label, used only for UI)
   const displayName = extractComponentNameFromHeader() ?? info.componentId;
 
-  const { card, close } = createModal(MODAL_ID, { width: '640px', maxHeight: '520px' });
+  const { card, close } = createModal(MODAL_ID, { width: '640px' });
 
   // Header
   const headerDiv = document.createElement('div');
@@ -219,7 +219,7 @@ function renderResults(
   close: () => void
 ): void {
   const body = document.createElement('div');
-  body.setAttribute('style', 'padding: 12px 20px;');
+  body.setAttribute('style', 'padding: 12px 20px; flex: 1; min-height: 0; overflow-y: auto;');
 
   if (records.length === 0) {
     const empty = document.createElement('div');

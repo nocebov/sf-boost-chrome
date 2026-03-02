@@ -63,11 +63,11 @@ export async function sendMessage<T extends MessageType>(
 
 export function onMessage<T extends MessageType>(
   type: T,
-  handler: (data: MessageMap[T]['data']) => Promise<MessageMap[T]['response']>
+  handler: (data: MessageMap[T]['data'], sender: chrome.runtime.MessageSender) => Promise<MessageMap[T]['response']>
 ): void {
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === type) {
-      handler(message.data)
+      handler(message.data, sender)
         .then(sendResponse)
         .catch((e: Error) => sendResponse({ __error: e.message }));
       return true; // async response

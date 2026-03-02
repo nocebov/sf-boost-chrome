@@ -12,7 +12,7 @@ import '../../modules/environment-safeguard';
 import '../../modules/deep-dependency-inspector';
 import '../../modules/change-set-buddy';
 import '../../modules/profile-to-permset';
-import '../../modules/flow-guardian';
+import '../../modules/hide-devops-bar';
 
 declare global {
   interface Window { __sfBoostLoaded?: boolean; }

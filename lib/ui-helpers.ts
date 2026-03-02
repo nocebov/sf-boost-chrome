@@ -3,9 +3,9 @@
 /** Create a modal with backdrop, card, and close handler */
 export function createModal(
   id: string,
-  options: { width?: string; maxHeight?: string } = {}
+  options: { width?: string } = {}
 ): { backdrop: HTMLDivElement; card: HTMLDivElement; close: () => void } {
-  const { width = '560px', maxHeight = '480px' } = options;
+  const { width = '560px' } = options;
 
   const backdrop = document.createElement('div');
   backdrop.id = `${id}-backdrop`;
@@ -26,8 +26,11 @@ export function createModal(
     background: #fff;
     border-radius: 12px;
     width: ${width};
-    max-height: ${maxHeight};
-    overflow-y: auto;
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     z-index: 99999999;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

@@ -37,10 +37,14 @@ export default defineBackground(() => {
   });
 
   // Handle Permission Set creation requests
-  onMessage('createPermissionSet', async (data) => {
+  onMessage('createPermissionSet', async (data, sender) => {
     const session = await getSessionFromCookie(data.instanceUrl);
     if (!session) throw new Error('No active Salesforce session');
-    return createPermissionSet(data.instanceUrl, session.sessionId, data);
+    return createPermissionSet(data.instanceUrl, session.sessionId, data, (msg) => {
+      if (sender.tab?.id) {
+        chrome.tabs.sendMessage(sender.tab.id, { type: 'sfboost-progress', message: msg }).catch(() => { });
+      }
+    });
   });
 
   // Handle command palette keyboard shortcut

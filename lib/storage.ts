@@ -1,5 +1,5 @@
 const DEFAULTS = {
-  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter', 'environment-safeguard', 'deep-dependency-inspector'] as string[],
+  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter', 'environment-safeguard', 'deep-dependency-inspector', 'hide-devops-bar'] as string[],
   orgSettings: {} as Record<string, OrgSettings>,
 };
 

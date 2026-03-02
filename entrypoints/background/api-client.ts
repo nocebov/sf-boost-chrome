@@ -145,7 +145,8 @@ export async function createPermissionSet(
     userPermissions: Array<{ name: string }>;
     tabSettings: Array<{ name: string; visibility: string }>;
     setupEntityAccess: Array<{ entityId: string; entityType: string }>;
-  }
+  },
+  onProgress?: (msg: string) => void
 ): Promise<{ id: string; success: boolean }> {
   const headers = {
     Authorization: `Bearer ${sessionId}`,
@@ -153,6 +154,7 @@ export async function createPermissionSet(
   };
 
   // Step 1: Create the Permission Set
+  onProgress?.('Creating Permission Set...');
   const psUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSet`;
   const psResponse = await fetch(psUrl, {
     method: 'POST',
@@ -173,7 +175,13 @@ export async function createPermissionSet(
   const permSetId = psResult.id;
 
   // Step 2: Create Object Permissions
+  if (data.objectPermissions.length > 0) {
+    onProgress?.(`Adding ${data.objectPermissions.length} Object Permissions...`);
+  }
+  let opCount = 0;
   for (const obj of data.objectPermissions) {
+    if (opCount > 0 && opCount % 10 === 0) onProgress?.(`Adding Object Permissions (${opCount}/${data.objectPermissions.length})...`);
+    opCount++;
     const opUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/ObjectPermissions`;
     const opResponse = await fetch(opUrl, {
       method: 'POST',
@@ -197,7 +205,13 @@ export async function createPermissionSet(
   }
 
   // Step 3: Create Field Permissions
+  if (data.fieldPermissions.length > 0) {
+    onProgress?.(`Adding ${data.fieldPermissions.length} Field Permissions...`);
+  }
+  let fpCount = 0;
   for (const field of data.fieldPermissions) {
+    if (fpCount > 0 && fpCount % 25 === 0) onProgress?.(`Adding Field Permissions (${fpCount}/${data.fieldPermissions.length})...`);
+    fpCount++;
     const fpUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/FieldPermissions`;
     const fpResponse = await fetch(fpUrl, {
       method: 'POST',
@@ -219,6 +233,7 @@ export async function createPermissionSet(
 
   // Step 4: Set User Permissions (single PATCH on the PermissionSet record)
   if (data.userPermissions.length > 0) {
+    onProgress?.(`Applying ${data.userPermissions.length} User Permissions...`);
     const permFields: Record<string, boolean> = {};
     for (const up of data.userPermissions) {
       permFields[up.name] = true;
@@ -237,7 +252,13 @@ export async function createPermissionSet(
   }
 
   // Step 5: Create Tab Settings
+  if (data.tabSettings.length > 0) {
+    onProgress?.(`Adding ${data.tabSettings.length} Tab Settings...`);
+  }
+  let tabCount = 0;
   for (const tab of data.tabSettings) {
+    if (tabCount > 0 && tabCount % 25 === 0) onProgress?.(`Adding Tab Settings (${tabCount}/${data.tabSettings.length})...`);
+    tabCount++;
     const tabUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSetTabSetting`;
     const tabResponse = await fetch(tabUrl, {
       method: 'POST',
@@ -256,7 +277,13 @@ export async function createPermissionSet(
   }
 
   // Step 6: Create Setup Entity Access (Apex Class, VF Page, Custom Permission)
+  if (data.setupEntityAccess.length > 0) {
+    onProgress?.(`Adding ${data.setupEntityAccess.length} Setup Entity Access records...`);
+  }
+  let seaCount = 0;
   for (const sea of data.setupEntityAccess) {
+    if (seaCount > 0 && seaCount % 25 === 0) onProgress?.(`Adding Setup Entity Access (${seaCount}/${data.setupEntityAccess.length})...`);
+    seaCount++;
     const seaUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/SetupEntityAccess`;
     const seaResponse = await fetch(seaUrl, {
       method: 'POST',

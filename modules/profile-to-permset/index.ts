@@ -181,7 +181,7 @@ function renderSelectionStep(
   close: () => void
 ): void {
   const body = document.createElement('div');
-  body.setAttribute('style', 'padding: 16px 20px; overflow-y: auto; max-height: 380px;');
+  body.setAttribute('style', 'padding: 16px 20px; flex: 1; overflow-y: auto;');
 
   // Profile info summary
   const info = document.createElement('div');
@@ -361,6 +361,13 @@ function renderSelectionStep(
     loadingSpan.appendChild(loadingText);
     footer.appendChild(loadingSpan);
 
+    const progressListener = (msg: any) => {
+      if (msg.type === 'sfboost-progress' && msg.message) {
+        loadingText.textContent = msg.message;
+      }
+    };
+    chrome.runtime.onMessage.addListener(progressListener);
+
     try {
       const result = await createPermSetViaApi({
         instanceUrl,
@@ -373,6 +380,7 @@ function renderSelectionStep(
         setupEntityAccess: seaPerms,
       });
 
+      chrome.runtime.onMessage.removeListener(progressListener);
       footer.textContent = '';
       const successDiv = document.createElement('div');
       successDiv.setAttribute('style', 'display: flex; align-items: center; gap: 8px; color: #16a34a; font-size: 13px;');
@@ -387,6 +395,7 @@ function renderSelectionStep(
       successDiv.appendChild(openLink);
       footer.appendChild(successDiv);
     } catch (err: any) {
+      chrome.runtime.onMessage.removeListener(progressListener);
       footer.textContent = '';
       const errorDiv = document.createElement('span');
       errorDiv.setAttribute('style', 'color: #ef4444; font-size: 13px;');
