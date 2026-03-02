@@ -7,6 +7,7 @@ import type { SFPageContext } from '../../modules/types';
 import '../../modules/command-palette';
 import '../../modules/field-inspector';
 import '../../modules/quick-copy';
+import '../../modules/table-filter';
 
 function buildPageContext(): SFPageContext {
   const { hostname, pathname, href } = window.location;

@@ -10,6 +10,7 @@ const ALL_MODULES: ModuleInfo[] = [
   { id: 'command-palette', name: 'Command Palette', description: 'Quick navigation (Alt+Shift+S)' },
   { id: 'field-inspector', name: 'Field Inspector', description: 'Show API names on fields (Alt+Shift+F)' },
   { id: 'quick-copy', name: 'Quick Copy', description: 'Copy record IDs & values' },
+  { id: 'table-filter', name: 'Table Filter', description: 'Quick search for tables' },
 ];
 
 async function render() {
