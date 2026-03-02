@@ -48,6 +48,33 @@ export async function executeSOQL(
   return response.json();
 }
 
+/** Fetch all records from a SOQL query, handling pagination via nextRecordsUrl */
+export async function executeSOQLAll(
+  instanceUrl: string,
+  sessionId: string,
+  query: string
+): Promise<any> {
+  let result = await executeSOQL(instanceUrl, sessionId, query);
+  const allRecords = [...result.records];
+
+  while (result.nextRecordsUrl) {
+    const nextUrl = `${instanceUrl}${result.nextRecordsUrl}`;
+    const response = await fetch(nextUrl, {
+      headers: {
+        Authorization: `Bearer ${sessionId}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`SOQL query pagination failed: ${response.status} ${response.statusText}`);
+    }
+    result = await response.json();
+    allRecords.push(...result.records);
+  }
+
+  return { ...result, records: allRecords, done: true };
+}
+
 export async function executeToolingQuery(
   instanceUrl: string,
   sessionId: string,
@@ -115,6 +142,9 @@ export async function createPermissionSet(
       readable: boolean;
       editable: boolean;
     }>;
+    userPermissions: Array<{ name: string }>;
+    tabSettings: Array<{ name: string; visibility: string }>;
+    setupEntityAccess: Array<{ entityId: string; entityType: string }>;
   }
 ): Promise<{ id: string; success: boolean }> {
   const headers = {
@@ -184,6 +214,62 @@ export async function createPermissionSet(
       const err = await fpResponse.json().catch(() => ({}));
       const msg = Array.isArray(err) ? err[0]?.message : err.message || fpResponse.statusText;
       console.warn(`[SF Boost] Failed to create FieldPermission for ${field.field}: ${msg}`);
+    }
+  }
+
+  // Step 4: Set User Permissions (single PATCH on the PermissionSet record)
+  if (data.userPermissions.length > 0) {
+    const permFields: Record<string, boolean> = {};
+    for (const up of data.userPermissions) {
+      permFields[up.name] = true;
+    }
+    const patchUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSet/${permSetId}`;
+    const patchResponse = await fetch(patchUrl, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(permFields),
+    });
+    if (!patchResponse.ok) {
+      const err = await patchResponse.json().catch(() => ({}));
+      const msg = Array.isArray(err) ? err[0]?.message : err.message || patchResponse.statusText;
+      console.warn(`[SF Boost] Failed to set User Permissions: ${msg}`);
+    }
+  }
+
+  // Step 5: Create Tab Settings
+  for (const tab of data.tabSettings) {
+    const tabUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSetTabSetting`;
+    const tabResponse = await fetch(tabUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ParentId: permSetId,
+        Name: tab.name,
+        Visibility: tab.visibility,
+      }),
+    });
+    if (!tabResponse.ok) {
+      const err = await tabResponse.json().catch(() => ({}));
+      const msg = Array.isArray(err) ? err[0]?.message : err.message || tabResponse.statusText;
+      console.warn(`[SF Boost] Failed to create TabSetting for ${tab.name}: ${msg}`);
+    }
+  }
+
+  // Step 6: Create Setup Entity Access (Apex Class, VF Page, Custom Permission)
+  for (const sea of data.setupEntityAccess) {
+    const seaUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/SetupEntityAccess`;
+    const seaResponse = await fetch(seaUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ParentId: permSetId,
+        SetupEntityId: sea.entityId,
+      }),
+    });
+    if (!seaResponse.ok) {
+      const err = await seaResponse.json().catch(() => ({}));
+      const msg = Array.isArray(err) ? err[0]?.message : err.message || seaResponse.statusText;
+      console.warn(`[SF Boost] Failed to create SetupEntityAccess for ${sea.entityType}: ${msg}`);
     }
   }
 

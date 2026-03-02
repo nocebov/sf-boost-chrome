@@ -9,12 +9,12 @@ let currentCtx: ModuleContext | null = null;
 
 // Default color scheme per org type
 const ENV_COLORS: Record<OrgType, { bg: string; text: string; label: string }> = {
-  production:  { bg: '#dc2626', text: '#fff', label: 'PRODUCTION' },
-  sandbox:     { bg: '#16a34a', text: '#fff', label: 'SANDBOX' },
-  developer:   { bg: '#2563eb', text: '#fff', label: 'DEV' },
-  scratch:     { bg: '#7c3aed', text: '#fff', label: 'SCRATCH' },
-  trailhead:   { bg: '#0d9488', text: '#fff', label: 'TRAILHEAD' },
-  unknown:     { bg: '#6b7280', text: '#fff', label: 'UNKNOWN' },
+  production: { bg: '#dc2626', text: '#fff', label: 'PRODUCTION' },
+  sandbox: { bg: '#16a34a', text: '#fff', label: 'SANDBOX' },
+  developer: { bg: '#2563eb', text: '#fff', label: 'DEV' },
+  scratch: { bg: '#7c3aed', text: '#fff', label: 'SCRATCH' },
+  trailhead: { bg: '#0d9488', text: '#fff', label: 'TRAILHEAD' },
+  unknown: { bg: '#6b7280', text: '#fff', label: 'UNKNOWN' },
 };
 
 function getTitlePrefix(orgType: OrgType, sandboxName?: string): string {
@@ -104,11 +104,13 @@ const environmentSafeguard: SFBoostModule = {
 
   async init(ctx: ModuleContext) {
     currentCtx = ctx;
+    if (window.top !== window.self) return;
     await injectBadge(ctx);
   },
 
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
+    if (window.top !== window.self) return;
     // Badge persists across SPA navigation — only re-inject if needed
     if (!document.getElementById(BADGE_ID)) {
       await injectBadge(ctx);

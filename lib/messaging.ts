@@ -13,6 +13,10 @@ export interface MessageMap {
     data: { instanceUrl: string; query: string };
     response: any;
   };
+  executeSOQLAll: {
+    data: { instanceUrl: string; query: string };
+    response: any;
+  };
   executeToolingQuery: {
     data: { instanceUrl: string; query: string };
     response: any;
@@ -36,6 +40,9 @@ export interface MessageMap {
         readable: boolean;
         editable: boolean;
       }>;
+      userPermissions: Array<{ name: string }>;
+      tabSettings: Array<{ name: string; visibility: string }>;
+      setupEntityAccess: Array<{ entityId: string; entityType: string }>;
     };
     response: { id: string; success: boolean };
   };

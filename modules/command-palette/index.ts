@@ -49,12 +49,21 @@ function createPaletteUI() {
   backdrop.id = PALETTE_ID;
   backdrop.setAttribute('style', `
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0,0,0,0.2);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     z-index: 9999999;
     display: flex; align-items: flex-start; justify-content: center;
     padding-top: 15vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
   `);
+
+  // Trigger animation after creation
+  requestAnimationFrame(() => {
+    backdrop.style.opacity = '1';
+  });
 
   const card = document.createElement('div');
   card.setAttribute('style', `
@@ -63,7 +72,13 @@ function createPaletteUI() {
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
     display: flex; flex-direction: column;
     overflow: hidden;
+    transform: scale(0.98) translateY(-10px);
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   `);
+
+  requestAnimationFrame(() => {
+    card.style.transform = 'scale(1) translateY(0)';
+  });
 
   // Sub-mode header (hidden by default)
   const subModeHeader = document.createElement('div');
@@ -93,6 +108,8 @@ function createPaletteUI() {
   results.setAttribute('style', `
     overflow-y: auto; flex: 1;
     max-height: 340px;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
   `);
 
   card.appendChild(subModeHeader);
@@ -153,6 +170,14 @@ function createPaletteUI() {
       info.append(label, cat);
       row.append(icon, info);
       results.appendChild(row);
+
+      // Auto-scroll logic exactly for the active item
+      if (i === selectedIndex) {
+        // use setTimeout or microtask to ensure DOM is updated first
+        queueMicrotask(() => {
+          row.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+        });
+      }
     }
   }
 
@@ -222,7 +247,14 @@ function createPaletteUI() {
 
   function closePalette() {
     const el = document.getElementById(PALETTE_ID);
-    if (el) el.remove();
+    if (el) {
+      el.style.opacity = '0';
+      const cardEl = el.querySelector('div');
+      if (cardEl) {
+        cardEl.style.transform = 'scale(0.98) translateY(-10px)';
+      }
+      setTimeout(() => el.remove(), 150);
+    }
   }
 
   // Event handlers

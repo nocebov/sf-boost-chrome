@@ -1,5 +1,11 @@
 import { sendMessage } from '../../lib/messaging';
-import type { ObjectPermission, FieldPermission } from './permission-reader';
+import type {
+  ObjectPermission,
+  FieldPermission,
+  UserPermission,
+  TabSetting,
+  SetupEntityAccessItem,
+} from './permission-reader';
 
 export interface PermSetCreationParams {
   instanceUrl: string;
@@ -7,13 +13,14 @@ export interface PermSetCreationParams {
   label: string;
   objectPermissions: ObjectPermission[];
   fieldPermissions: FieldPermission[];
+  userPermissions: UserPermission[];
+  tabSettings: TabSetting[];
+  setupEntityAccess: SetupEntityAccessItem[];
 }
 
 export interface PermSetCreationResult {
   id: string;
   success: boolean;
-  objectErrors: string[];
-  fieldErrors: string[];
 }
 
 /**
@@ -40,13 +47,22 @@ export async function createPermSetViaApi(
       readable: fp.PermissionsRead,
       editable: fp.PermissionsEdit,
     })),
+    userPermissions: params.userPermissions.map(up => ({
+      name: up.name,
+    })),
+    tabSettings: params.tabSettings.map(ts => ({
+      name: ts.Name,
+      visibility: ts.Visibility,
+    })),
+    setupEntityAccess: params.setupEntityAccess.map(sea => ({
+      entityId: sea.SetupEntityId,
+      entityType: sea.SetupEntityType,
+    })),
   });
 
   return {
     id: result.id,
     success: result.success,
-    objectErrors: [],
-    fieldErrors: [],
   };
 }
 

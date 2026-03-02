@@ -41,6 +41,7 @@ export default defineContentScript({
     '*://*.my.salesforce.com/*',
     '*://*.salesforce-setup.com/*',
   ],
+  allFrames: true,
   runAt: 'document_idle',
 
   async main() {

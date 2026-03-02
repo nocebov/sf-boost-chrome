@@ -13,27 +13,49 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 // --- Page Detection ---
 
 interface PageInfo {
-  componentName: string;
+  componentId: string;   // Salesforce ID (for API query via RefMetadataComponentId)
   componentType: string;
 }
 
 function getComponentFromUrl(): PageInfo | null {
-  const url = window.location.href;
   const pathname = window.location.pathname;
 
-  // Object Manager > Field: /lightning/setup/ObjectManager/{Object}/FieldsAndRelationships/{FieldId}/view
+  // Object Manager > Field: /lightning/setup/ObjectManager/{ObjectId}/FieldsAndRelationships/{FieldId}/view
   const fieldMatch = pathname.match(
-    /\/lightning\/setup\/ObjectManager\/(\w+)\/FieldsAndRelationships\/(\w+)\//
+    /\/lightning\/setup\/ObjectManager\/\w+\/FieldsAndRelationships\/(\w{15,18})\//
   );
   if (fieldMatch?.[1]) {
-    return { componentName: fieldMatch[1], componentType: 'CustomField' };
+    return { componentId: fieldMatch[1], componentType: 'CustomField' };
   }
 
   // Apex Classes: /lightning/setup/ApexClasses/page?address=/{classId}
   if (pathname.includes('/lightning/setup/ApexClasses/')) {
-    return { componentName: '', componentType: 'ApexClass' };
+    const addrMatch = window.location.href.match(/address=\/(\w{15,18})/);
+    if (addrMatch?.[1]) return { componentId: addrMatch[1], componentType: 'ApexClass' };
   }
 
+  return null;
+}
+
+function findNodeInDocumentOrIframes(selectors: string[]): Element | null {
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+
+  const iframes = document.querySelectorAll('iframe');
+  for (const iframe of Array.from(iframes)) {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) continue;
+      for (const sel of selectors) {
+        const el = doc.querySelector(sel);
+        if (el) return el;
+      }
+    } catch (e) {
+      // Ignore cross-origin iframe errors
+    }
+  }
   return null;
 }
 
@@ -43,15 +65,11 @@ function extractComponentNameFromHeader(): string | null {
     'h1.slds-page-header__title',
     '.slds-page-header__title',
     '.uiOutputText[data-aura-rendered-by]',
+    '.pageDescription', // Classic Aloha setup pages
     'h1',
   ];
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (el?.textContent?.trim()) {
-      return el.textContent.trim();
-    }
-  }
-  return null;
+  const el = findNodeInDocumentOrIframes(selectors);
+  return el?.textContent?.trim() || null;
 }
 
 // --- Button Injection ---
@@ -60,7 +78,7 @@ function injectButton(): boolean {
   if (document.getElementById(BTN_ID)) return true;
 
   const info = getComponentFromUrl();
-  if (!info) return false;
+  if (!info?.componentId) return false;
 
   // Find header to inject near
   const headerSelectors = [
@@ -69,13 +87,10 @@ function injectButton(): boolean {
     'h1.slds-page-header__title',
     '.test-id__field-header',
     '.entityNameTitle',
+    '.pageDescription', // Classic Aloha setup pages
   ];
 
-  let header: Element | null = null;
-  for (const sel of headerSelectors) {
-    header = document.querySelector(sel);
-    if (header) break;
-  }
+  const header = findNodeInDocumentOrIframes(headerSelectors);
   if (!header) return false;
 
   const btn = createButton('Deep Scan', { small: false });
@@ -93,7 +108,7 @@ function injectButton(): boolean {
   return true;
 }
 
-function scheduleInject(attempts = 8, delay = 400): void {
+function scheduleInject(attempts = 15, delay = 500): void {
   cancelRetry();
   let count = 0;
   const tryInject = () => {
@@ -132,13 +147,15 @@ interface GroupedDependencies {
 async function runDeepScan(): Promise<void> {
   if (!currentCtx) return;
 
-  const componentName = extractComponentNameFromHeader();
-  if (!componentName) {
-    showToast('Could not determine component name');
+  const info = getComponentFromUrl();
+  if (!info?.componentId) {
+    showToast('Could not determine component ID from URL');
     return;
   }
 
-  // Create modal with loading state
+  // Display name from page header (label, used only for UI)
+  const displayName = extractComponentNameFromHeader() ?? info.componentId;
+
   const { card, close } = createModal(MODAL_ID, { width: '640px', maxHeight: '520px' });
 
   // Header
@@ -152,7 +169,7 @@ async function runDeepScan(): Promise<void> {
   `);
   const title = document.createElement('h2');
   title.setAttribute('style', 'margin: 0; font-size: 16px; font-weight: 700; color: #181818;');
-  title.textContent = `Dependencies: ${componentName}`;
+  title.textContent = `Dependencies: ${displayName}`;
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '\u00d7';
@@ -176,8 +193,8 @@ async function runDeepScan(): Promise<void> {
   card.appendChild(loadingDiv);
 
   try {
-    // Query: what uses this component
-    const usedByQuery = `SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE RefMetadataComponentName = '${componentName.replace(/'/g, "\\'")}'`;
+    // Use RefMetadataComponentId — works with any component type, no name format issues
+    const usedByQuery = `SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE RefMetadataComponentId = '${info.componentId}'`;
 
     const result = await sendMessage('executeToolingQuery', {
       instanceUrl: currentCtx.pageContext.instanceUrl,
@@ -185,7 +202,7 @@ async function runDeepScan(): Promise<void> {
     });
 
     loadingDiv.remove();
-    renderResults(card, result.records || [], componentName, close);
+    renderResults(card, result.records || [], displayName, close);
   } catch (err: any) {
     loadingDiv.remove();
     const errorDiv = document.createElement('div');
@@ -313,6 +330,18 @@ function renderResults(
 
 function removeButton(): void {
   document.getElementById(BTN_ID)?.remove();
+
+  // Clean up inside iframes as well
+  const iframes = document.querySelectorAll('iframe');
+  for (const iframe of Array.from(iframes)) {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) continue;
+      doc.getElementById(BTN_ID)?.remove();
+    } catch (e) {
+      // Ignore
+    }
+  }
 }
 
 function removeModal(): void {
@@ -334,7 +363,7 @@ const deepDependencyInspector: SFBoostModule = {
   id: 'deep-dependency-inspector',
   name: 'Deep Dependency Inspector',
   description: 'Show where fields, classes, and flows are used',
-  defaultEnabled: false,
+  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     currentCtx = ctx;

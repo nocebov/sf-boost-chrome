@@ -8,6 +8,9 @@ import {
   type ProfilePermissions,
   type ObjectPermission,
   type FieldPermission,
+  type UserPermission,
+  type TabSetting,
+  type SetupEntityAccessItem,
 } from './permission-reader';
 import { createPermSetViaApi, sanitizeApiName, permSetExists } from './permset-generator';
 
@@ -22,11 +25,29 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 function isProfilePage(): boolean {
   const pathname = window.location.pathname;
   const href = window.location.href;
-  return (
+
+  // Top-level Lightning URL
+  if (
     pathname.includes('/lightning/setup/EnhancedProfiles/') ||
     pathname.includes('/lightning/setup/Profiles/') ||
     (pathname.includes('/lightning/setup/') && href.includes('address=') && href.includes('00e'))
-  );
+  ) {
+    return true;
+  }
+
+  // Inside Classic iframe or direct Classic URL
+  if (extractProfileIdFromUrl()) {
+    // If we're on a setup/profile page, it usually has classic page title headers
+    if (document.querySelector('.setupcontent, .bPageTitle')) {
+      return true;
+    }
+    // Also support checking the path directly if the DOM isn't fully ready yet
+    if (pathname.match(/^\/00e[a-zA-Z0-9]{12,15}/)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // --- Button Injection ---
@@ -162,18 +183,31 @@ function renderSelectionStep(
   const body = document.createElement('div');
   body.setAttribute('style', 'padding: 16px 20px; overflow-y: auto; max-height: 380px;');
 
-  // Profile info
+  // Profile info summary
   const info = document.createElement('div');
   info.setAttribute('style', 'margin-bottom: 16px; font-size: 13px; color: #706e6b;');
-  info.textContent = `Profile: ${permissions.profileName} | ${permissions.objectPermissions.length} objects | ${permissions.fieldPermissions.length} field permissions`;
+  const counts: string[] = [`Profile: ${permissions.profileName}`];
+  if (permissions.objectPermissions.length) counts.push(`${permissions.objectPermissions.length} objects`);
+  if (permissions.fieldPermissions.length) counts.push(`${permissions.fieldPermissions.length} fields`);
+  if (permissions.userPermissions.length) counts.push(`${permissions.userPermissions.length} user perms`);
+  if (permissions.tabSettings.length) counts.push(`${permissions.tabSettings.length} tabs`);
+  const seaCount = permissions.apexClassAccess.length + permissions.vfPageAccess.length + permissions.customPermissions.length;
+  if (seaCount) counts.push(`${seaCount} access entries`);
+  info.textContent = counts.join(' | ');
   body.appendChild(info);
 
-  // Object Permissions section
+  // Selection sets for each permission type
   const selectedObjects = new Set<number>();
   const selectedFields = new Set<number>();
+  const selectedUserPerms = new Set<number>();
+  const selectedTabs = new Set<number>();
+  const selectedApex = new Set<number>();
+  const selectedVF = new Set<number>();
+  const selectedCustomPerms = new Set<number>();
 
+  // Object Permissions section
   if (permissions.objectPermissions.length > 0) {
-    const objSection = createPermissionSection(
+    body.appendChild(createPermissionSection(
       'Object Permissions',
       permissions.objectPermissions,
       (op: ObjectPermission) => op.SobjectType,
@@ -188,13 +222,12 @@ function renderSelectionStep(
         return perms.join(', ');
       },
       selectedObjects,
-    );
-    body.appendChild(objSection);
+    ));
   }
 
   // Field Permissions section
   if (permissions.fieldPermissions.length > 0) {
-    const fieldSection = createPermissionSection(
+    body.appendChild(createPermissionSection(
       'Field Permissions',
       permissions.fieldPermissions,
       (fp: FieldPermission) => fp.Field,
@@ -205,8 +238,62 @@ function renderSelectionStep(
         return perms.join(', ');
       },
       selectedFields,
-    );
-    body.appendChild(fieldSection);
+    ));
+  }
+
+  // User Permissions (System Permissions) section
+  if (permissions.userPermissions.length > 0) {
+    body.appendChild(createPermissionSection(
+      'User Permissions',
+      permissions.userPermissions,
+      (up: UserPermission) => up.label,
+      () => '',
+      selectedUserPerms,
+    ));
+  }
+
+  // Tab Settings section
+  if (permissions.tabSettings.length > 0) {
+    body.appendChild(createPermissionSection(
+      'Tab Settings',
+      permissions.tabSettings,
+      (ts: TabSetting) => ts.Name,
+      (ts: TabSetting) => ts.Visibility,
+      selectedTabs,
+    ));
+  }
+
+  // Apex Class Access section
+  if (permissions.apexClassAccess.length > 0) {
+    body.appendChild(createPermissionSection(
+      'Apex Class Access',
+      permissions.apexClassAccess,
+      (item: SetupEntityAccessItem) => item.Name,
+      () => '',
+      selectedApex,
+    ));
+  }
+
+  // Visualforce Page Access section
+  if (permissions.vfPageAccess.length > 0) {
+    body.appendChild(createPermissionSection(
+      'Visualforce Page Access',
+      permissions.vfPageAccess,
+      (item: SetupEntityAccessItem) => item.Name,
+      () => '',
+      selectedVF,
+    ));
+  }
+
+  // Custom Permissions section
+  if (permissions.customPermissions.length > 0) {
+    body.appendChild(createPermissionSection(
+      'Custom Permissions',
+      permissions.customPermissions,
+      (item: SetupEntityAccessItem) => item.Name,
+      () => '',
+      selectedCustomPerms,
+    ));
   }
 
   card.appendChild(body);
@@ -241,18 +328,25 @@ function renderSelectionStep(
       return;
     }
 
-    // Check if exists
     const exists = await permSetExists(instanceUrl, name);
     if (exists) {
       showToast('Permission Set with this name already exists');
       return;
     }
 
-    // Gather selected permissions
+    // Gather selected permissions from all types
     const objPerms = permissions.objectPermissions.filter((_, i) => selectedObjects.has(i));
     const fldPerms = permissions.fieldPermissions.filter((_, i) => selectedFields.has(i));
+    const usrPerms = permissions.userPermissions.filter((_, i) => selectedUserPerms.has(i));
+    const tabPerms = permissions.tabSettings.filter((_, i) => selectedTabs.has(i));
+    const seaPerms = [
+      ...permissions.apexClassAccess.filter((_, i) => selectedApex.has(i)),
+      ...permissions.vfPageAccess.filter((_, i) => selectedVF.has(i)),
+      ...permissions.customPermissions.filter((_, i) => selectedCustomPerms.has(i)),
+    ];
 
-    if (objPerms.length === 0 && fldPerms.length === 0) {
+    const totalSelected = objPerms.length + fldPerms.length + usrPerms.length + tabPerms.length + seaPerms.length;
+    if (totalSelected === 0) {
       showToast('Select at least one permission');
       return;
     }
@@ -263,7 +357,7 @@ function renderSelectionStep(
     loadingSpan.setAttribute('style', 'display: flex; align-items: center; gap: 8px; color: #706e6b; font-size: 13px;');
     loadingSpan.appendChild(createSpinner(18));
     const loadingText = document.createElement('span');
-    loadingText.textContent = `Creating Permission Set with ${objPerms.length} object & ${fldPerms.length} field permissions...`;
+    loadingText.textContent = `Creating Permission Set with ${totalSelected} permissions...`;
     loadingSpan.appendChild(loadingText);
     footer.appendChild(loadingSpan);
 
@@ -274,6 +368,9 @@ function renderSelectionStep(
         label: nameInput.value.trim() || name,
         objectPermissions: objPerms,
         fieldPermissions: fldPerms,
+        userPermissions: usrPerms,
+        tabSettings: tabPerms,
+        setupEntityAccess: seaPerms,
       });
 
       footer.textContent = '';
@@ -393,7 +490,7 @@ function createPermissionSection<T>(
 const profileToPermset: SFBoostModule = {
   id: 'profile-to-permset',
   name: 'Profile to Permission Set',
-  description: 'Extract Profile OLS/FLS to a new Permission Set',
+  description: 'Extract all Profile permissions to a new Permission Set',
   defaultEnabled: false,
 
   async init(ctx: ModuleContext) {

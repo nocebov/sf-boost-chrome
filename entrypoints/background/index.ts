@@ -1,6 +1,6 @@
 import { onMessage } from '../../lib/messaging';
 import { getSessionFromCookie } from './session-manager';
-import { describeObject, executeSOQL, executeToolingQueryAll, createPermissionSet } from './api-client';
+import { describeObject, executeSOQL, executeSOQLAll, executeToolingQueryAll, createPermissionSet } from './api-client';
 
 export default defineBackground(() => {
   // Handle session requests
@@ -20,6 +20,13 @@ export default defineBackground(() => {
     const session = await getSessionFromCookie(data.instanceUrl);
     if (!session) throw new Error('No active Salesforce session');
     return executeSOQL(data.instanceUrl, session.sessionId, data.query);
+  });
+
+  // Handle SOQL query all requests
+  onMessage('executeSOQLAll', async (data) => {
+    const session = await getSessionFromCookie(data.instanceUrl);
+    if (!session) throw new Error('No active Salesforce session');
+    return executeSOQLAll(data.instanceUrl, session.sessionId, data.query);
   });
 
   // Handle Tooling API query requests

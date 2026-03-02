@@ -1,75 +1,60 @@
-# Salesforce Boost (SF Boost)
+# 🚀 Salesforce Boost (SF Boost)
 
-Salesforce Boost is a powerful Chrome Extension built to enhance productivity for Salesforce Developers, Administrators, and Consultants. It injects a set of handy "power tools" directly into the Salesforce UI, eliminating repetitive clicks and drastically speeding up daily tasks.
+**Salesforce Boost** is a Chrome Extension designed to eliminate repetitive clicks and supercharge your everyday workflow. Built for Salesforce Administrators, Developers, and Consultants, it seamlessly injects powerful, time-saving tools directly into the Salesforce UI.
 
-## Features & Functionality
+---
 
-### 1. Command Palette (Alt+Shift+S)
-A lightning-fast, keyboard-driven navigation menu that lets you jump anywhere in setup or perform quick actions without touching your mouse.
+## ✨ Power Tools
 
-**How it works**: Press `Alt+Shift+S` anywhere in Salesforce, type your search query, and hit Enter.
+### 1. 🔍 Command Palette (`Alt+Shift+S`)
+Stop endless clicking through the Setup menu. Jump anywhere instantly.
 
-**All Available Commands & Setup Quick Links**:
-- **Users & Access**: Users, Profiles, Permission Sets, Permission Set Groups, Roles, Public Groups, Queues, Login History
-- **Objects & Fields**: Object Manager, Schema Builder, Picklist Value Sets
-- **Automation**: Find Flow, Flows, Process Automation Settings, Approval Processes, Scheduled Jobs
-- **Code**: Apex Classes, Apex Triggers, Visualforce Pages, Visualforce Components, Static Resources, Lightning Components, Custom Metadata Types, Custom Settings, Custom Labels, Platform Events
-- **Debug & Logs**: Debug Logs, Developer Console, Apex Test Execution
-- **Deploy & Packages**: Deployment Status, Outbound Change Sets, Inbound Change Sets, Installed Packages
-- **Security**: Sharing Settings, Field Accessibility, Session Settings, Named Credentials, Remote Site Settings, CORS, Connected Apps
-- **Email**: Email Deliverability, Email Templates
-- **Data**: Data Import Wizard, Mass Delete Records, Storage Usage
-- **UI & Apps**: App Manager, Lightning App Builder, Page Layouts, Tabs, Record Types, Global Actions
-- **Company Info**: Company Information, Sandboxes
-- **Reports & Dashboards**: Report Types
-- **Integration**: API, External Services
+* **How it works:** Press `Alt+Shift+S`, type what you need, and hit Enter.
+* **What you can find:** 
+  * Users, Profiles, Roles, Permission Sets
+  * Object Manager, Picklist Value Sets, Fields
+  * Flows (type `Find Flow` to instantly search all Flow names!), Process Builders, Approval Processes
+  * Apex Classes, Triggers, LWC, Visualforce, Debug Logs
+  * **Quick Actions:** Type `Developer Console` to open it instantly.
 
-**Special Capabilities**:
-- **Flow Search (⚡ Find Flow)**: Type "Find Flow", hit enter, and instantly search through all your org's flows (Screen Flows, Autolaunched, Record-Triggered) by name. Select one to jump directly into the Flow Builder.
-- **Developer Console**: Instantly open the Dev Console via a quick action search.
-- **Copy Current Record ID**: Grabs the 18-character ID from the current page's URL to your clipboard.
-- **Copy Current Page URL**: Copies the full link of the current page.
+### 2. 🩻 Field Inspector (`Alt+Shift+F`)
+No more digging in the Object Manager just to find a field's API name.
 
-### 2. Field Inspector (Alt+Shift+F)
-Instantly view and copy the underlying API names of fields directly on standard record page layouts.
+* **How it works:** Press `Alt+Shift+F` (or click the `{ }` button in the bottom-right) on any Record page.
+* **What happens:** Blue badges appear next to UI labels displaying the **exact API Name**. 
+* **Pro Tips:** Hover over the badge to see the **Field Type** (and if it's Required). Click the badge to **1-click copy** the API name to your clipboard!
 
-**How it works**: Click the floating `{ }` button in the bottom right corner of a record page to toggle the inspector, or use the `Alt+Shift+F` keyboard shortcut.
+### 3. 📋 Quick Copy
+Stop struggling to highlight the perfect 18-character ID in the URL bar.
 
-**Key Capabilities**:
-- **Inline API Names**: Adds a small blue badge containing the Field API Name next to the standard UI label for every recognized field on the page.
-- **One-Click Copy**: Click the badge to immediately copy the API name to your clipboard (the badge turns green to confirm!).
-- **Hover Info**: Hover over any badge to see the field type and whether it is a required field.
+* **How it works:** Whenever you are on a Record page, a small copy icon appears right next to the record's title.
+* **What it does:** One click grabs the clean 18-character Record ID straight to your clipboard.
 
-### 3. Quick Copy
-Stop struggling to highlight the 18-character Record ID in the URL bar.
+### 4. 🔎 Table Filter
+Say goodbye to scrolling through long, unsearchable Setup tables and List Views.
 
-**How it works**: A minimal copy icon is automatically injected directly next to the record title/header on any standard record page.
+* **How it works:** A smart search bar is automatically injected above standard Salesforce tables (like Profiles, Users, Custom Settings lists).
+* **What it does:** Type anything, and the table filters instantly in real-time. No page reloads needed!
 
-**Key Capabilities**:
-- **Record ID Copy**: Click the icon to instantly grab the 18-character Record ID to your clipboard. A small toast notification confirms the copy.
+---
 
-## Best Use Cases
+## 🛠️ Installation & Development
 
-- **Salesforce Administrators**: Constantly modifying and troubleshooting Flows? Use the Command Palette to search for "Flows" or "Find Flow" to jump directly to the Flow Builder in seconds. Navigating between Profiles and Permission Sets is now instant.
-- **Salesforce Developers**: Writing SOQL queries or Apex triggers? Toggle the Field Inspector (`Alt+Shift+F`) to grab the exact API names from the page layout without having to dig through the Object Manager for every single field. Instantly open the Dev Console via the Command Palette.
-- **Consultants & QA**: Working with multiple records and needing to document IDs or share links in tickets? Use the Quick Copy button next to the record name to grab Record IDs instantly without manual highlighting.
+This extension is built with modern tools: **[WXT Framework](https://wxt.dev/)**, **TypeScript**, and **Bun**.
 
-## Development & Installation
-
-This project is built using the [WXT](https://wxt.dev/) framework, TypeScript, and Bun/npm.
-
-### Commands
+### Getting Started
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Run the dev server (opens a fresh Chrome instance)
+# 2. Run the development server (opens a fresh Chrome instance)
 npm run dev
 
-# Build the extension for production
-npm run build
-
-# Package the extension into a zip file for the Chrome Web Store
+# 3. Build for production (creates the .zip file for the Chrome Web Store)
 npm run zip
 ```
+
+---
+
+*Built for speed. Designed for Salesforce Pros.* 💙
