@@ -12,6 +12,7 @@ export default defineConfig({
       '*://*.lightning.force.com/*',
       '*://*.my.salesforce.com/*',
       '*://*.force.com/*',
+      '*://*.salesforce-setup.com/*',
     ],
     commands: {
       'show-command-palette': {

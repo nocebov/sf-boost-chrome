@@ -29,6 +29,7 @@ export default defineContentScript({
     '*://*.salesforce.com/*',
     '*://*.lightning.force.com/*',
     '*://*.my.salesforce.com/*',
+    '*://*.salesforce-setup.com/*',
   ],
   runAt: 'document_idle',
 

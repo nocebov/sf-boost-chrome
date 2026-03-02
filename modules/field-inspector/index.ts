@@ -80,9 +80,13 @@ async function showFieldBadges() {
     });
   }
 
-  // Find all field labels in the DOM
+  // Find all field labels in the DOM.
+  // Use :has() to avoid selecting outer label elements that already contain
+  // a more specific inner span — prevents duplicate badges.
   const labelElements = document.querySelectorAll(
-    'span.test-id__field-label, .slds-form-element__label, records-record-layout-item span[class*="label"], label.slds-form-element__label'
+    'span.test-id__field-label, ' +
+    '.slds-form-element__label:not(:has(span.test-id__field-label)), ' +
+    'records-record-layout-item span[class*="label"]:not(:has(span.test-id__field-label))'
   );
 
   let matched = 0;

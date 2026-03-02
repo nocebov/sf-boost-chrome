@@ -9,20 +9,26 @@ A lightning-fast, keyboard-driven navigation menu that lets you jump anywhere in
 
 **How it works**: Press `Alt+Shift+S` anywhere in Salesforce, type your search query, and hit Enter.
 
-**Key Capabilities**:
-- **Setup Quick Links**: Over 40 unique shortcuts right to the Setup pages you need most. Search for things like:
-  - *Users & Access*: Users, Profiles, Permission Sets, Roles, Public Groups, Login History
-  - *Objects & Data*: Object Manager, Schema Builder, Data Import Wizard, Mass Delete
-  - *Automation*: Flows, Process Automation Settings, Scheduled Jobs
-  - *Code*: Apex Classes, Triggers, LWC, Custom Metadata, Custom Settings
-  - *Security*: Sharing Settings, FLS, Session Settings, CORS
-  - *Deploy*: Deployment Status, Change Sets, Installed Packages
-  - *And much more...*
+**All Available Commands & Setup Quick Links**:
+- **Users & Access**: Users, Profiles, Permission Sets, Permission Set Groups, Roles, Public Groups, Queues, Login History
+- **Objects & Fields**: Object Manager, Schema Builder, Picklist Value Sets
+- **Automation**: Find Flow, Flows, Process Automation Settings, Approval Processes, Scheduled Jobs
+- **Code**: Apex Classes, Apex Triggers, Visualforce Pages, Visualforce Components, Static Resources, Lightning Components, Custom Metadata Types, Custom Settings, Custom Labels, Platform Events
+- **Debug & Logs**: Debug Logs, Developer Console, Apex Test Execution
+- **Deploy & Packages**: Deployment Status, Outbound Change Sets, Inbound Change Sets, Installed Packages
+- **Security**: Sharing Settings, Field Accessibility, Session Settings, Named Credentials, Remote Site Settings, CORS, Connected Apps
+- **Email**: Email Deliverability, Email Templates
+- **Data**: Data Import Wizard, Mass Delete Records, Storage Usage
+- **UI & Apps**: App Manager, Lightning App Builder, Page Layouts, Tabs, Record Types, Global Actions
+- **Company Info**: Company Information, Sandboxes
+- **Reports & Dashboards**: Report Types
+- **Integration**: API, External Services
+
+**Special Capabilities**:
 - **Flow Search (⚡ Find Flow)**: Type "Find Flow", hit enter, and instantly search through all your org's flows (Screen Flows, Autolaunched, Record-Triggered) by name. Select one to jump directly into the Flow Builder.
-- **Quick Actions**:
-  - Open the **Developer Console** instantly.
-  - **Copy Current Record ID** right from the URL.
-  - **Copy Current Page URL** to your clipboard.
+- **Developer Console**: Instantly open the Dev Console via a quick action search.
+- **Copy Current Record ID**: Grabs the 18-character ID from the current page's URL to your clipboard.
+- **Copy Current Page URL**: Copies the full link of the current page.
 
 ### 2. Field Inspector (Alt+Shift+F)
 Instantly view and copy the underlying API names of fields directly on standard record page layouts.

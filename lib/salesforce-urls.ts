@@ -48,6 +48,11 @@ export function buildInstanceUrl(hostname: string): string {
   if (hostname.includes('.lightning.force.com')) {
     return `https://${hostname.replace('.lightning.force.com', '.my.salesforce.com')}`;
   }
+  // Convert salesforce-setup.com to salesforce.com for API calls
+  // e.g. foo.trailblaze.my.salesforce-setup.com → foo.trailblaze.my.salesforce.com
+  if (hostname.includes('.salesforce-setup.com')) {
+    return `https://${hostname.replace('.salesforce-setup.com', '.salesforce.com')}`;
+  }
   return `https://${hostname}`;
 }
 
