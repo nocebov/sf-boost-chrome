@@ -1,8 +1,9 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 
-const DATA_ATTR = 'data-sfboost-table-filter';
-const CONTAINER_CLASS = 'sfboost-table-filter';
+const DATA_ATTR = 'data-sfboost-cs-managed';
+const FILTER_CLASS = 'sfboost-cs-filter';
+const COUNTER_CLASS = 'sfboost-cs-counter';
 
 let observer: MutationObserver | null = null;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
@@ -10,40 +11,27 @@ let initTimer: ReturnType<typeof setTimeout> | null = null;
 let rowTextCache = new WeakMap<HTMLTableRowElement, string>();
 const activeDebounces = new Set<ReturnType<typeof setTimeout>>();
 
-// --- Table Detection ---
+// --- Page Detection ---
 
-interface DetectedTable {
-  table: HTMLTableElement;
+function isChangeSetPage(): boolean {
+  const url = window.location.href;
+  return (
+    url.includes('changemgmt/outboundChangeSet') ||
+    url.includes('changemgmt/listOutboundChangeSet') ||
+    url.includes('changemgmt/addToChangeSet') ||
+    url.includes('changemgmt/pickEntityType')
+  );
 }
 
-function detectTables(): DetectedTable[] {
-  const seen = new Set<HTMLTableElement>();
-  const results: DetectedTable[] = [];
-
-  const add = (table: HTMLTableElement) => {
-    if (seen.has(table) || table.hasAttribute(DATA_ATTR) || table.hasAttribute('data-sfboost-cs-managed')) return;
-    // Skip tiny tables (layout tables, etc.)
-    const rows = table.querySelectorAll('tbody tr, tr');
-    if (rows.length < 3) return;
-    seen.add(table);
-    results.push({ table });
-  };
-
-  // Classic Setup tables
-  document.querySelectorAll<HTMLTableElement>(
-    'table.list, .pbBody table, .bRelatedList table, table.x-grid-with-paginator'
-  ).forEach(add);
-
-  // Lightning list view tables
-  document.querySelectorAll<HTMLTableElement>('table[role="grid"]').forEach(add);
-
-  // Generic fallback: any sizeable table
-  document.querySelectorAll<HTMLTableElement>('table').forEach(add);
-
-  return results;
+function isAddComponentPage(): boolean {
+  const url = window.location.href;
+  return (
+    url.includes('changemgmt/addToChangeSet') ||
+    url.includes('changemgmt/pickEntityType')
+  );
 }
 
-// --- Search UI Creation ---
+// --- Search UI ---
 
 function createSearchIcon(): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -76,38 +64,35 @@ function createSearchIcon(): SVGSVGElement {
 
 function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   const container = document.createElement('div');
-  container.className = CONTAINER_CLASS;
+  container.className = FILTER_CLASS;
   container.setAttribute('style', `
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 10px;
-    margin-bottom: 4px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
     background: #fff;
     border: 1px solid #d8dde6;
-    border-radius: 4px;
+    border-radius: 6px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   `);
 
-  // Search icon
   container.appendChild(createSearchIcon());
 
-  // Input
   const input = document.createElement('input');
   input.type = 'text';
-  input.placeholder = 'Filter table...';
+  input.placeholder = isAddComponentPage() ? 'Search components...' : 'Filter Change Set components...';
   input.setAttribute('style', `
     flex: 1;
-    padding: 5px 8px;
+    padding: 6px 10px;
     border: 1px solid #d8dde6;
     border-radius: 4px;
     font-size: 13px;
     outline: none;
     color: #181818;
     background: #fff;
-    min-width: 180px;
-    max-width: 320px;
+    min-width: 200px;
     transition: border-color 0.15s;
   `);
   input.addEventListener('focus', () => { input.style.borderColor = '#0176d3'; });
@@ -115,6 +100,7 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
 
   // Count badge
   const count = document.createElement('span');
+  count.className = COUNTER_CLASS;
   count.setAttribute('style', `
     font-size: 12px;
     color: #706e6b;
@@ -123,20 +109,25 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   `);
   updateCount(table, count, '');
 
+  // Component type counter
+  const typeCounter = document.createElement('span');
+  typeCounter.setAttribute('style', `
+    font-size: 11px;
+    color: #9ca3af;
+    white-space: nowrap;
+    user-select: none;
+    margin-left: 4px;
+  `);
+  updateTypeCounter(table, typeCounter);
+
   // Clear button
   const clearBtn = document.createElement('button');
   clearBtn.textContent = '\u00d7';
   clearBtn.title = 'Clear filter';
   clearBtn.setAttribute('style', `
-    display: none;
-    border: none;
-    background: none;
-    color: #706e6b;
-    font-size: 18px;
-    cursor: pointer;
-    padding: 0 4px;
-    line-height: 1;
-    flex-shrink: 0;
+    display: none; border: none; background: none;
+    color: #706e6b; font-size: 18px; cursor: pointer;
+    padding: 0 4px; line-height: 1; flex-shrink: 0;
   `);
   clearBtn.addEventListener('mouseenter', () => { clearBtn.style.color = '#181818'; });
   clearBtn.addEventListener('mouseleave', () => { clearBtn.style.color = '#706e6b'; });
@@ -155,7 +146,6 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   };
 
   input.addEventListener('input', onInput);
-
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       input.value = '';
@@ -172,22 +162,19 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
     input.focus();
   });
 
-  container.appendChild(input);
-  container.appendChild(count);
-  container.appendChild(clearBtn);
+  container.append(input, count, typeCounter, clearBtn);
   return container;
 }
 
 // --- Filtering ---
 
 function getBodyRows(table: HTMLTableElement): HTMLTableRowElement[] {
-  // Prefer tbody rows; if no tbody, take all rows except first (header)
   const tbody = table.querySelector('tbody');
   if (tbody) {
     return Array.from(tbody.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
   }
   const allRows = Array.from(table.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
-  return allRows.slice(1); // skip header row
+  return allRows.slice(1);
 }
 
 function getRowText(row: HTMLTableRowElement): string {
@@ -224,17 +211,71 @@ function updateCount(table: HTMLTableElement, countEl: HTMLElement, query: strin
   const rows = getBodyRows(table);
   const total = rows.length;
   if (!query) {
-    countEl.textContent = `${total} rows`;
+    countEl.textContent = `${total} items`;
   } else {
     const visible = rows.filter(r => r.style.display !== 'none').length;
     countEl.textContent = `${visible} / ${total}`;
   }
 }
 
-// --- Injection ---
+function updateTypeCounter(table: HTMLTableElement, el: HTMLElement): void {
+  const rows = getBodyRows(table);
+  const types = new Map<string, number>();
 
-function injectFilter(detected: DetectedTable): void {
-  const { table } = detected;
+  for (const row of rows) {
+    // In Change Set tables, the "Type" column is typically the second cell
+    const cells = row.querySelectorAll('td, th');
+    if (cells.length >= 2) {
+      const type = cells[1]?.textContent?.trim() || 'Unknown';
+      types.set(type, (types.get(type) || 0) + 1);
+    }
+  }
+
+  if (types.size > 1) {
+    const parts = Array.from(types.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([type, count]) => `${count} ${type}`);
+    el.textContent = parts.join(', ');
+  }
+}
+
+// --- Table Detection ---
+
+function detectTables(): HTMLTableElement[] {
+  const results: HTMLTableElement[] = [];
+  const selectors = [
+    'table.list',
+    '.pbBody table',
+    '.bRelatedList table',
+    'table.x-grid-with-paginator',
+    'table[role="grid"]',
+  ];
+
+  const seen = new Set<HTMLTableElement>();
+  for (const sel of selectors) {
+    document.querySelectorAll<HTMLTableElement>(sel).forEach(table => {
+      if (seen.has(table) || table.hasAttribute(DATA_ATTR)) return;
+      const rows = table.querySelectorAll('tbody tr, tr');
+      if (rows.length < 2) return;
+      seen.add(table);
+      results.push(table);
+    });
+  }
+
+  // Fallback: any table with enough rows
+  document.querySelectorAll<HTMLTableElement>('table').forEach(table => {
+    if (seen.has(table) || table.hasAttribute(DATA_ATTR)) return;
+    const rows = table.querySelectorAll('tbody tr, tr');
+    if (rows.length < 3) return;
+    seen.add(table);
+    results.push(table);
+  });
+
+  return results;
+}
+
+function injectFilter(table: HTMLTableElement): void {
   table.setAttribute(DATA_ATTR, 'true');
   const container = createFilterUI(table);
   const parent = table.parentElement;
@@ -248,14 +289,12 @@ function scanAndInject(): void {
   tables.forEach(injectFilter);
 }
 
-// --- MutationObserver ---
+// --- Observer ---
 
 function startObserver(): void {
   if (observer) return;
   observer = new MutationObserver(() => {
-    // Invalidate text cache on any DOM change
     rowTextCache = new WeakMap();
-    // Throttle: only schedule a scan if one isn't already pending
     if (!scanTimer) {
       scanTimer = setTimeout(() => {
         scanTimer = null;
@@ -264,8 +303,7 @@ function startObserver(): void {
     }
   });
 
-  // Prefer a narrower observe target when available
-  const root = document.querySelector('.oneContent, .mainContentMark, #content') ?? document.body;
+  const root = document.querySelector('.oneContent, .mainContentMark, #content, .bodyDiv') ?? document.body;
   observer.observe(root, { childList: true, subtree: true });
 }
 
@@ -278,14 +316,10 @@ function stopObserver(): void {
 // --- Cleanup ---
 
 function removeAllFilters(): void {
-  // Cancel pending debounce timers
   for (const t of activeDebounces) clearTimeout(t);
   activeDebounces.clear();
-  // Drop stale text cache
   rowTextCache = new WeakMap();
-  // Remove filter UI containers
-  document.querySelectorAll(`.${CONTAINER_CLASS}`).forEach(el => el.remove());
-  // Reset hidden rows
+  document.querySelectorAll(`.${FILTER_CLASS}`).forEach(el => el.remove());
   document.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {
     getBodyRows(table).forEach(row => { row.style.display = ''; });
     table.removeAttribute(DATA_ATTR);
@@ -294,33 +328,31 @@ function removeAllFilters(): void {
 
 // --- Module ---
 
-const tableFilter: SFBoostModule = {
-  id: 'table-filter',
-  name: 'Table Filter',
-  description: 'Quick search/filter for Salesforce tables',
-  defaultEnabled: true,
+const changeSetBuddy: SFBoostModule = {
+  id: 'change-set-buddy',
+  name: 'Change Set Buddy',
+  description: 'Enhanced Change Set experience with search and filter',
+  defaultEnabled: false,
 
-  async init(ctx: ModuleContext) {
-    const { pageType } = ctx.pageContext;
-    if (pageType === 'setup' || pageType === 'list') {
+  async init(_ctx: ModuleContext) {
+    if (isChangeSetPage()) {
       initTimer = setTimeout(() => {
         scanAndInject();
         startObserver();
-      }, 1500);
+      }, 1000);
     }
   },
 
-  async onNavigate(ctx: ModuleContext) {
+  async onNavigate(_ctx: ModuleContext) {
     removeAllFilters();
     stopObserver();
     if (initTimer) { clearTimeout(initTimer); initTimer = null; }
 
-    const { pageType } = ctx.pageContext;
-    if (pageType === 'setup' || pageType === 'list') {
+    if (isChangeSetPage()) {
       initTimer = setTimeout(() => {
         scanAndInject();
         startObserver();
-      }, 1500);
+      }, 1000);
     }
   },
 
@@ -331,4 +363,4 @@ const tableFilter: SFBoostModule = {
   },
 };
 
-registry.register(tableFilter);
+registry.register(changeSetBuddy);

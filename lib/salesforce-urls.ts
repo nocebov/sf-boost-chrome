@@ -56,7 +56,7 @@ export function buildInstanceUrl(hostname: string): string {
   return `https://${hostname}`;
 }
 
-export type PageType = 'record' | 'list' | 'setup' | 'home' | 'app' | 'other';
+export type PageType = 'record' | 'list' | 'setup' | 'home' | 'app' | 'flow-builder' | 'change-set' | 'other';
 
 export interface ParsedPage {
   pageType: PageType;
@@ -65,6 +65,16 @@ export interface ParsedPage {
 }
 
 export function parseLightningUrl(pathname: string): ParsedPage {
+  // Flow Builder: /builder_platform_interaction/flowBuilder.app
+  if (pathname.includes('/builder_platform_interaction/flowBuilder.app')) {
+    return { pageType: 'flow-builder' };
+  }
+
+  // Change Set pages
+  if (pathname.includes('/changemgmt/')) {
+    return { pageType: 'change-set' };
+  }
+
   // Record: /lightning/r/{ObjectApiName}/{RecordId}/view
   const recordMatch = pathname.match(/^\/lightning\/r\/(\w+)\/(\w{15,18})\/view/);
   if (recordMatch) {

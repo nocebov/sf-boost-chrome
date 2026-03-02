@@ -11,6 +11,11 @@ const ALL_MODULES: ModuleInfo[] = [
   { id: 'field-inspector', name: 'Field Inspector', description: 'Show API names on fields (Alt+Shift+F)' },
   { id: 'quick-copy', name: 'Quick Copy', description: 'Copy record IDs & values' },
   { id: 'table-filter', name: 'Table Filter', description: 'Quick search for tables' },
+  { id: 'environment-safeguard', name: 'Environment Safeguard', description: 'Color-coded environment indicator' },
+  { id: 'deep-dependency-inspector', name: 'Dependency Inspector', description: 'Deep scan where components are used' },
+  { id: 'change-set-buddy', name: 'Change Set Buddy', description: 'Enhanced Change Set experience' },
+  { id: 'profile-to-permset', name: 'Profile to PermSet', description: 'Extract Profile permissions to Permission Set' },
+  { id: 'flow-guardian', name: 'Flow Guardian', description: 'Detect SOQL-in-loop & missing null checks' },
 ];
 
 const container = document.getElementById('modules');

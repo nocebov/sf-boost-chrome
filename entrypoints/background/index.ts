@@ -1,6 +1,6 @@
 import { onMessage } from '../../lib/messaging';
 import { getSessionFromCookie } from './session-manager';
-import { describeObject, executeSOQL } from './api-client';
+import { describeObject, executeSOQL, executeToolingQueryAll, createPermissionSet } from './api-client';
 
 export default defineBackground(() => {
   // Handle session requests
@@ -20,6 +20,20 @@ export default defineBackground(() => {
     const session = await getSessionFromCookie(data.instanceUrl);
     if (!session) throw new Error('No active Salesforce session');
     return executeSOQL(data.instanceUrl, session.sessionId, data.query);
+  });
+
+  // Handle Tooling API query requests
+  onMessage('executeToolingQuery', async (data) => {
+    const session = await getSessionFromCookie(data.instanceUrl);
+    if (!session) throw new Error('No active Salesforce session');
+    return executeToolingQueryAll(data.instanceUrl, session.sessionId, data.query);
+  });
+
+  // Handle Permission Set creation requests
+  onMessage('createPermissionSet', async (data) => {
+    const session = await getSessionFromCookie(data.instanceUrl);
+    if (!session) throw new Error('No active Salesforce session');
+    return createPermissionSet(data.instanceUrl, session.sessionId, data);
   });
 
   // Handle command palette keyboard shortcut
