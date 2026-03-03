@@ -35,27 +35,26 @@ function isAddComponentPage(): boolean {
 
 function createSearchIcon(): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '16');
-  svg.setAttribute('height', '16');
-  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('width', '18');
+  svg.setAttribute('height', '18');
+  svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
-  svg.setAttribute('style', 'flex-shrink: 0;');
+  svg.setAttribute('stroke', '#888');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('style', 'flex-shrink: 0; margin-right: 2px;');
 
   const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  circle.setAttribute('cx', '6.5');
-  circle.setAttribute('cy', '6.5');
-  circle.setAttribute('r', '5.5');
-  circle.setAttribute('stroke', '#706e6b');
-  circle.setAttribute('stroke-width', '1.5');
+  circle.setAttribute('cx', '11');
+  circle.setAttribute('cy', '11');
+  circle.setAttribute('r', '8');
 
   const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  line.setAttribute('x1', '10.5');
-  line.setAttribute('y1', '10.5');
-  line.setAttribute('x2', '15');
-  line.setAttribute('y2', '15');
-  line.setAttribute('stroke', '#706e6b');
-  line.setAttribute('stroke-width', '1.5');
-  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('x1', '21');
+  line.setAttribute('y1', '21');
+  line.setAttribute('x2', '16.65');
+  line.setAttribute('y2', '16.65');
 
   svg.appendChild(circle);
   svg.appendChild(line);
@@ -68,15 +67,18 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   container.setAttribute('style', `
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    margin-bottom: 6px;
-    background: #fff;
-    border: 1px solid #d8dde6;
-    border-radius: 6px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    gap: 10px;
+    padding: 8px 16px;
+    margin: 12px 0;
+    background: #ffffff;
+    border: 1px solid #e2e2e2;
+    border-radius: 24px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: all 0.2s ease;
   `);
+  container.addEventListener('mouseenter', () => { container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; container.style.borderColor = '#d0d0d0'; });
+  container.addEventListener('mouseleave', () => { container.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; container.style.borderColor = '#e2e2e2'; });
 
   container.appendChild(createSearchIcon());
 
@@ -85,52 +87,64 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   input.placeholder = isAddComponentPage() ? 'Search components...' : 'Filter Change Set components...';
   input.setAttribute('style', `
     flex: 1;
-    padding: 6px 10px;
-    border: 1px solid #d8dde6;
-    border-radius: 4px;
-    font-size: 13px;
+    border: none;
+    font-size: 14px;
     outline: none;
-    color: #181818;
-    background: #fff;
+    background: transparent;
+    color: #333;
+    padding: 6px 0;
     min-width: 200px;
-    transition: border-color 0.15s;
   `);
-  input.addEventListener('focus', () => { input.style.borderColor = '#0176d3'; });
-  input.addEventListener('blur', () => { input.style.borderColor = '#d8dde6'; });
+
+  // Component type counter (placed before count for visual hierarchy)
+  const typeCounter = document.createElement('span');
+  typeCounter.setAttribute('style', `
+    font-size: 12px;
+    font-weight: 500;
+    color: #4f46e5;
+    white-space: nowrap;
+    user-select: none;
+    background: #eef2ff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid #e0e7ff;
+  `);
+  updateTypeCounter(table, typeCounter);
 
   // Count badge
   const count = document.createElement('span');
   count.className = COUNTER_CLASS;
   count.setAttribute('style', `
     font-size: 12px;
-    color: #706e6b;
+    font-weight: 600;
+    color: #555;
     white-space: nowrap;
     user-select: none;
+    background: #f3f4f6;
+    padding: 4px 10px;
+    border-radius: 12px;
   `);
   updateCount(table, count, '');
 
-  // Component type counter
-  const typeCounter = document.createElement('span');
-  typeCounter.setAttribute('style', `
-    font-size: 11px;
-    color: #9ca3af;
-    white-space: nowrap;
-    user-select: none;
-    margin-left: 4px;
-  `);
-  updateTypeCounter(table, typeCounter);
-
   // Clear button
   const clearBtn = document.createElement('button');
-  clearBtn.textContent = '\u00d7';
+  clearBtn.innerHTML = `
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:block">
+      <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  `;
   clearBtn.title = 'Clear filter';
   clearBtn.setAttribute('style', `
-    display: none; border: none; background: none;
-    color: #706e6b; font-size: 18px; cursor: pointer;
-    padding: 0 4px; line-height: 1; flex-shrink: 0;
+    display: none; border: none; background: #f3f4f6;
+    color: #9ca3af; cursor: pointer;
+    padding: 6px; flex-shrink: 0;
+    border-radius: 50%;
+    align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+    height: 24px; width: 24px;
   `);
-  clearBtn.addEventListener('mouseenter', () => { clearBtn.style.color = '#181818'; });
-  clearBtn.addEventListener('mouseleave', () => { clearBtn.style.color = '#706e6b'; });
+  clearBtn.addEventListener('mouseenter', () => { clearBtn.style.background = '#e5e7eb'; clearBtn.style.color = '#4b5563'; });
+  clearBtn.addEventListener('mouseleave', () => { clearBtn.style.background = '#f3f4f6'; clearBtn.style.color = '#9ca3af'; });
 
   // Debounced filter
   let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -140,7 +154,7 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
       activeDebounces.delete(debounce!);
       const query = input.value;
       filterTable(table, query, count);
-      clearBtn.style.display = query.trim() ? 'block' : 'none';
+      clearBtn.style.display = query.trim() ? 'flex' : 'none';
     }, 150);
     activeDebounces.add(debounce);
   };
@@ -162,19 +176,18 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
     input.focus();
   });
 
-  container.append(input, count, typeCounter, clearBtn);
+  container.append(input, typeCounter, count, clearBtn);
   return container;
 }
 
 // --- Filtering ---
 
 function getBodyRows(table: HTMLTableElement): HTMLTableRowElement[] {
-  const tbody = table.querySelector('tbody');
-  if (tbody) {
-    return Array.from(tbody.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
-  }
-  const allRows = Array.from(table.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
-  return allRows.slice(1);
+  const dataRows = Array.from(table.querySelectorAll<HTMLTableRowElement>(':scope > tbody > tr.dataRow, :scope > tr.dataRow'));
+  if (dataRows.length > 0) return dataRows;
+
+  const allRows = Array.from(table.querySelectorAll<HTMLTableRowElement>(':scope > tbody > tr, :scope > tr'));
+  return allRows.filter(r => !r.classList.contains('headerRow') && !r.querySelector('th'));
 }
 
 function getRowText(row: HTMLTableRowElement): string {
@@ -231,12 +244,16 @@ function updateTypeCounter(table: HTMLTableElement, el: HTMLElement): void {
     }
   }
 
-  if (types.size > 1) {
+  if (types.size > 1 && types.size <= Math.max(3, rows.length / 2)) {
     const parts = Array.from(types.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
+      .slice(0, 3)
       .map(([type, count]) => `${count} ${type}`);
     el.textContent = parts.join(', ');
+    el.style.display = '';
+  } else {
+    el.textContent = '';
+    el.style.display = 'none';
   }
 }
 
@@ -246,7 +263,7 @@ function detectTables(): HTMLTableElement[] {
   const results: HTMLTableElement[] = [];
   const selectors = [
     'table.list',
-    '.pbBody table',
+    '.pbBody > table',
     '.bRelatedList table',
     'table.x-grid-with-paginator',
     'table[role="grid"]',
@@ -256,18 +273,20 @@ function detectTables(): HTMLTableElement[] {
   for (const sel of selectors) {
     document.querySelectorAll<HTMLTableElement>(sel).forEach(table => {
       if (seen.has(table) || table.hasAttribute(DATA_ATTR)) return;
-      const rows = table.querySelectorAll('tbody tr, tr');
+      const rows = getBodyRows(table);
       if (rows.length < 2) return;
       seen.add(table);
       results.push(table);
     });
   }
 
-  // Fallback: any table with enough rows
+  // Fallback: any table with enough rows, ignoring layout tables
   document.querySelectorAll<HTMLTableElement>('table').forEach(table => {
     if (seen.has(table) || table.hasAttribute(DATA_ATTR)) return;
-    const rows = table.querySelectorAll('tbody tr, tr');
+    const rows = getBodyRows(table);
     if (rows.length < 3) return;
+    const hasHeaders = !!table.querySelector('tr.headerRow, th');
+    if (!hasHeaders) return;
     seen.add(table);
     results.push(table);
   });

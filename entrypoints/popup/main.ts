@@ -7,8 +7,8 @@ interface ModuleInfo {
 }
 
 const ALL_MODULES: ModuleInfo[] = [
-  { id: 'command-palette', name: 'Command Palette', description: 'Quick navigation (Alt+Shift+S)' },
-  { id: 'field-inspector', name: 'Field Inspector', description: 'Show API names on fields (Alt+Shift+F)' },
+  { id: 'command-palette', name: 'Command Palette', description: 'Quick navigation & tools' },
+  { id: 'field-inspector', name: 'Field Inspector', description: 'Show API names on fields' },
   { id: 'quick-copy', name: 'Quick Copy', description: 'Copy record IDs & values' },
   { id: 'table-filter', name: 'Table Filter', description: 'Quick search for tables' },
   { id: 'environment-safeguard', name: 'Environment Safeguard', description: 'Color-coded environment indicator' },
@@ -72,5 +72,12 @@ container?.addEventListener('change', async (e) => {
 
   await setEnabledModules(updated);
 });
+
+const shortcutsBtn = document.getElementById('shortcuts-btn');
+if (shortcutsBtn) {
+  shortcutsBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  });
+}
 
 render();

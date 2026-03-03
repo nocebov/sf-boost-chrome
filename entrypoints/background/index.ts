@@ -48,8 +48,8 @@ export default defineBackground(() => {
   });
 
   // Handle command palette keyboard shortcut
-  chrome.commands.onCommand.addListener(async (command) => {
-    if (command === 'show-command-palette' || command === 'toggle-field-inspector') {
+  chrome.commands.onCommand.addListener(async (command: string) => {
+    if (command === 'show-command-palette') {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
         chrome.tabs.sendMessage(tab.id, { type: command });

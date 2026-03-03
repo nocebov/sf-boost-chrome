@@ -6,7 +6,6 @@ import { getOrgSettings } from '../../lib/storage';
 const BADGE_ID = 'sfboost-env-badge';
 let originalTitle = '';
 let currentCtx: ModuleContext | null = null;
-
 // Default color scheme per org type
 const ENV_COLORS: Record<OrgType, { bg: string; text: string; label: string }> = {
   production: { bg: '#dc2626', text: '#fff', label: 'PRODUCTION' },
@@ -49,11 +48,10 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
 
   const badge = document.createElement('div');
   badge.id = BADGE_ID;
-  badge.textContent = label;
   badge.setAttribute('style', `
     position: fixed;
     top: 8px;
-    left: 60px;
+    left: 80px;
     z-index: 99999;
     padding: 2px 10px;
     border-radius: 12px;
@@ -66,7 +64,15 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
     color: ${textColor};
     box-shadow: 0 1px 4px rgba(0,0,0,0.15);
     user-select: none;
+    display: flex;
+    align-items: center;
+    transition: opacity 0.2s ease;
   `);
+
+  const labelSpan = document.createElement('span');
+  labelSpan.textContent = label;
+
+  badge.appendChild(labelSpan);
 
   document.body.appendChild(badge);
 
