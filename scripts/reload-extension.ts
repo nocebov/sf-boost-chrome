@@ -82,10 +82,14 @@ async function reloadExtension(): Promise<void> {
   });
 }
 
-try {
-  await reloadExtension();
-  console.log('\x1b[32m✅ Розширення перезавантажено!\x1b[0m');
-} catch (e) {
-  console.error('\x1b[31m❌ Помилка:\x1b[0m', (e as Error).message);
-  process.exit(1);
+async function main() {
+  try {
+    await reloadExtension();
+    console.log('\x1b[32m✅ Розширення перезавантажено!\x1b[0m');
+  } catch (e) {
+    console.error('\x1b[31m❌ Помилка:\x1b[0m', (e as Error).message);
+    process.exit(1);
+  }
 }
+
+main();

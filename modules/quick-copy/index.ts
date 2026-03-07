@@ -10,7 +10,26 @@ function createCopyButton(text: string, tooltip: string): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.className = COPY_BTN_CLASS;
   btn.title = tooltip;
-  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '14');
+  svg.setAttribute('height', '14');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const svgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  svgRect.setAttribute('x', '9');
+  svgRect.setAttribute('y', '9');
+  svgRect.setAttribute('width', '13');
+  svgRect.setAttribute('height', '13');
+  svgRect.setAttribute('rx', '2');
+  svgRect.setAttribute('ry', '2');
+  const svgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  svgPath.setAttribute('d', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1');
+  svg.append(svgRect, svgPath);
+  btn.appendChild(svg);
   btn.setAttribute('style', `
     display: inline-flex; align-items: center; justify-content: center;
     width: 24px; height: 24px;
@@ -105,6 +124,7 @@ const quickCopy: SFBoostModule = {
   defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
+    if (window.top !== window.self) return;
     currentCtx = ctx;
     if (ctx.pageContext.pageType === 'record') {
       scheduleInject();
@@ -112,6 +132,7 @@ const quickCopy: SFBoostModule = {
   },
 
   async onNavigate(ctx: ModuleContext) {
+    if (window.top !== window.self) return;
     currentCtx = ctx;
     cancelRetry();
     removeCopyButtons();
@@ -121,6 +142,7 @@ const quickCopy: SFBoostModule = {
   },
 
   destroy() {
+    if (window.top !== window.self) return;
     cancelRetry();
     removeCopyButtons();
   },

@@ -5,8 +5,9 @@ export default defineConfig({
   manifest: {
     name: 'SF Boost',
     short_name: 'SF Boost',
-    description: 'Power tools for Salesforce developers and admins: field inspector, SOQL runner, metadata explorer and more.',
+    description: 'Salesforce productivity toolkit for admins and developers.',
     version: '0.2.0',
+    homepage_url: 'https://github.com/nocebov/sf-boost-chrome',
     icons: {
       16: 'icon-16.png',
       32: 'icon-32.png',
@@ -22,18 +23,22 @@ export default defineConfig({
         128: 'icon-128.png',
       },
     },
-    permissions: ['storage', 'cookies', 'activeTab', 'sidePanel'],
+    permissions: ['storage', 'cookies'],
+    content_security_policy: {
+      extension_pages: "script-src 'self'; object-src 'self';",
+    },
     host_permissions: [
       '*://*.salesforce.com/*',
-      '*://*.lightning.force.com/*',
       '*://*.my.salesforce.com/*',
-      '*://*.force.com/*',
-      '*://*.salesforce-setup.com/*',
     ],
     commands: {
       'show-command-palette': {
         suggested_key: { default: 'Alt+Shift+S', mac: 'Alt+Shift+S' },
         description: 'Open SF Boost Command Palette',
+      },
+      'toggle-field-inspector': {
+        suggested_key: { default: 'Alt+Shift+F', mac: 'Alt+Shift+F' },
+        description: 'Toggle Field Inspector',
       },
     },
   },

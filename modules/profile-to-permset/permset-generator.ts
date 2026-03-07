@@ -1,4 +1,5 @@
 import { sendMessage } from '../../lib/messaging';
+import { escapeSoqlString } from '../../lib/salesforce-utils';
 import type {
   ObjectPermission,
   FieldPermission,
@@ -21,6 +22,7 @@ export interface PermSetCreationParams {
 export interface PermSetCreationResult {
   id: string;
   success: boolean;
+  failures: Array<{ type: string; name: string; error: string }>;
 }
 
 /**
@@ -63,6 +65,7 @@ export async function createPermSetViaApi(
   return {
     id: result.id,
     success: result.success,
+    failures: result.failures ?? [],
   };
 }
 
@@ -70,12 +73,19 @@ export async function createPermSetViaApi(
  * Generate a safe API name from a label (no spaces, no special chars).
  */
 export function sanitizeApiName(label: string): string {
-  return label
+  let name = label
     .replace(/[^a-zA-Z0-9_ ]/g, '')
     .replace(/\s+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
     .slice(0, 80);
+
+  // Salesforce API names must start with a letter
+  if (name && !/^[a-zA-Z]/.test(name)) {
+    name = 'PS_' + name;
+  }
+
+  return name;
 }
 
 /**
@@ -88,7 +98,7 @@ export async function permSetExists(
   try {
     const result = await sendMessage('executeToolingQuery', {
       instanceUrl,
-      query: `SELECT Id FROM PermissionSet WHERE Name = '${name.replace(/'/g, "\\'")}' AND IsOwnedByProfile = false LIMIT 1`,
+      query: `SELECT Id FROM PermissionSet WHERE Name = '${escapeSoqlString(name)}' AND IsOwnedByProfile = false LIMIT 1`,
     });
     return (result.records?.length || 0) > 0;
   } catch {

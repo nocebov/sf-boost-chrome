@@ -3,6 +3,7 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
 import { createModal, createSpinner, createButton } from '../../lib/ui-helpers';
 import { showToast } from '../../lib/toast';
+import { assertSalesforceId, isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
 
 const BTN_ID = 'sfboost-deep-scan-btn';
 const MODAL_ID = 'sfboost-dependency-modal';
@@ -46,6 +47,14 @@ function findNodeInDocumentOrIframes(selectors: string[]): Element | null {
   const iframes = document.querySelectorAll('iframe');
   for (const iframe of Array.from(iframes)) {
     try {
+      // Verify iframe origin before accessing content
+      const src = iframe.src || '';
+      if (src) {
+        try {
+          const iframeUrl = new URL(src, window.location.origin);
+          if (!isAllowedSalesforceDomain(iframeUrl.hostname)) continue;
+        } catch { continue; }
+      }
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
       if (!doc) continue;
       for (const sel of selectors) {
@@ -173,6 +182,7 @@ async function runDeepScan(): Promise<void> {
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '\u00d7';
+  closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.setAttribute('style', `
     border: none; background: none; font-size: 22px; cursor: pointer;
     color: #706e6b; padding: 0 4px; line-height: 1;
@@ -193,8 +203,8 @@ async function runDeepScan(): Promise<void> {
   card.appendChild(loadingDiv);
 
   try {
-    // Use RefMetadataComponentId — works with any component type, no name format issues
-    const usedByQuery = `SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE RefMetadataComponentId = '${info.componentId}'`;
+    const safeId = assertSalesforceId(info.componentId, 'component');
+    const usedByQuery = `SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE RefMetadataComponentId = '${safeId}'`;
 
     const result = await sendMessage('executeToolingQuery', {
       instanceUrl: currentCtx.pageContext.instanceUrl,
@@ -335,6 +345,13 @@ function removeButton(): void {
   const iframes = document.querySelectorAll('iframe');
   for (const iframe of Array.from(iframes)) {
     try {
+      const src = iframe.src || '';
+      if (src) {
+        try {
+          const iframeUrl = new URL(src, window.location.origin);
+          if (!isAllowedSalesforceDomain(iframeUrl.hostname)) continue;
+        } catch { continue; }
+      }
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
       if (!doc) continue;
       doc.getElementById(BTN_ID)?.remove();
@@ -354,15 +371,15 @@ function removeModal(): void {
 function isRelevantPage(): boolean {
   const pathname = window.location.pathname;
   return (
-    pathname.includes('/ObjectManager/') &&
-    pathname.includes('/FieldsAndRelationships/')
+    (pathname.includes('/ObjectManager/') && pathname.includes('/FieldsAndRelationships/')) ||
+    pathname.includes('/lightning/setup/ApexClasses/')
   );
 }
 
 const deepDependencyInspector: SFBoostModule = {
   id: 'deep-dependency-inspector',
   name: 'Deep Dependency Inspector',
-  description: 'Show where fields, classes, and flows are used',
+  description: 'Show where Object Manager fields and Apex classes are used',
   defaultEnabled: true,
 
   async init(ctx: ModuleContext) {

@@ -153,6 +153,7 @@ function createHeader(titleText: string, close: () => void): HTMLDivElement {
 
   const closeBtn = document.createElement('button');
   closeBtn.textContent = '\u00d7';
+  closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.setAttribute('style', `
     border: none; background: none; font-size: 22px; cursor: pointer;
     color: #706e6b; padding: 0 4px; line-height: 1;
@@ -383,8 +384,11 @@ function renderSelectionStep(
       chrome.runtime.onMessage.removeListener(progressListener);
       footer.textContent = '';
       const successDiv = document.createElement('div');
-      successDiv.setAttribute('style', 'display: flex; align-items: center; gap: 8px; color: #16a34a; font-size: 13px;');
-      successDiv.textContent = `Permission Set created successfully!`;
+      successDiv.setAttribute('style', 'display: flex; flex-direction: column; gap: 6px; font-size: 13px;');
+
+      const successRow = document.createElement('div');
+      successRow.setAttribute('style', 'display: flex; align-items: center; gap: 8px; color: #16a34a;');
+      successRow.textContent = `Permission Set created successfully!`;
 
       const openLink = document.createElement('a');
       openLink.href = `${instanceUrl}/lightning/setup/PermSets/page?address=/${result.id}`;
@@ -392,7 +396,17 @@ function renderSelectionStep(
       openLink.textContent = 'Open';
       openLink.setAttribute('style', 'color: #0176d3; text-decoration: underline; margin-left: 8px;');
 
-      successDiv.appendChild(openLink);
+      successRow.appendChild(openLink);
+      successDiv.appendChild(successRow);
+
+      if (result.failures.length > 0) {
+        const warnDiv = document.createElement('div');
+        warnDiv.setAttribute('style', 'color: #d97706; font-size: 12px; max-height: 80px; overflow-y: auto;');
+        warnDiv.textContent = `${result.failures.length} permission(s) failed: ` +
+          result.failures.map(f => `${f.type} "${f.name}": ${f.error}`).join('; ');
+        successDiv.appendChild(warnDiv);
+      }
+
       footer.appendChild(successDiv);
     } catch (err: any) {
       chrome.runtime.onMessage.removeListener(progressListener);

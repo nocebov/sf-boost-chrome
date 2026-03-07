@@ -1,4 +1,5 @@
 import { sendMessage } from '../../lib/messaging';
+import { assertSalesforceId } from '../../lib/salesforce-utils';
 
 export interface ObjectPermission {
   SobjectType: string;
@@ -91,16 +92,17 @@ export async function readProfilePermissions(
   profileId: string
 ): Promise<ProfilePermissions> {
   // Step 1: Find the PermissionSet associated with this Profile
+  const safeProfileId = assertSalesforceId(profileId, 'profile');
   const psResult = await sendMessage('executeSOQLAll', {
     instanceUrl,
-    query: `SELECT Id, Profile.Name FROM PermissionSet WHERE ProfileId = '${profileId}' LIMIT 1`,
+    query: `SELECT Id, Profile.Name FROM PermissionSet WHERE ProfileId = '${safeProfileId}' LIMIT 1`,
   });
 
   if (!psResult.records?.length) {
     throw new Error('Could not find PermissionSet for this Profile');
   }
 
-  const permissionSetId = psResult.records[0].Id;
+  const permissionSetId = assertSalesforceId(psResult.records[0].Id, 'permissionSet');
   const profileName = psResult.records[0].Profile?.Name || 'Unknown Profile';
 
   // Step 2: Discover available User Permission fields via describe

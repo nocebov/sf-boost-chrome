@@ -1,6 +1,6 @@
-# SF Boost — Power Tools for Salesforce
+# SF Boost — Salesforce Productivity Toolkit
 
-**SF Boost** is a Chrome Extension that eliminates repetitive clicks and supercharges everyday Salesforce workflows. Built for Admins, Developers, and Consultants — it injects powerful tools directly into the Salesforce UI without ever leaving the page.
+**SF Boost** is a Chrome Extension focused on one job: making everyday Salesforce admin and developer work faster inside the native UI.
 
 > **Version 0.2.0** · Built with [WXT](https://wxt.dev/) · TypeScript · Bun
 
@@ -15,6 +15,7 @@ Jump anywhere in Setup without clicking through menus.
 Press `Alt+Shift+S`, start typing, hit Enter. Works for:
 - **Setup pages** — Users, Profiles, Roles, Permission Sets, Object Manager, Picklist Value Sets, Fields, Apex Classes, Triggers, LWC, Visualforce, Debug Logs, Developer Console, and more
 - **Flow Search** — type `Find Flow` to switch to Flow Search mode and search across all flows in the org (up to 2000 loaded, with flow type labels: Screen Flow, Autolaunched, Scheduled, etc.)
+- **Quick Actions** — easily copy your current Record ID or current Page URL.
 
 Navigate with arrow keys, confirm with Enter, close with Escape.
 
@@ -32,7 +33,7 @@ Press `Alt+Shift+F` or click the `{ }` button in the bottom-right corner. Blue A
 
 One-click copy of the 18-character Record ID on any record page.
 
-A small clipboard icon appears next to the record title — click it and the ID is in your clipboard. No more wrestling with URL bars.
+A small clipboard icon appears next to the record title or header — click it and the ID is in your clipboard. No more wrestling with URL bars.
 
 ---
 
@@ -56,7 +57,7 @@ A color-coded badge in the top-left corner that tells you exactly which org you'
 | Scratch | Purple |
 | Trailhead | Teal |
 
-Includes a live session status dot (green = active, red = expired). Also updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, etc.). Supports custom labels and colors per org.
+Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, etc.). Supports custom labels and colors per org.
 
 ---
 
@@ -78,9 +79,11 @@ On success, a direct link opens the new Permission Set. Duplicate name detection
 
 ### Deep Dependency Inspector
 
-Find where a field, Apex class, or flow is used across the org without writing SOQL.
+Find where an Object Manager field or Apex class is used across the org without writing SOQL.
 
 On Object Manager field pages or Apex Class pages, a **"Deep Scan"** button appears. Click it to query `MetadataComponentDependency` via the Tooling API. Results are grouped by component type (Flows, Apex Classes, Triggers, LWC, etc.) with icons and counts. Copy individual items or all dependencies at once.
+
+> Disabled by default — enable in the extension popup.
 
 ---
 
@@ -119,6 +122,20 @@ bun run zip
 ```
 
 Load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` with Developer Mode on.
+
+---
+
+## Data Handling
+
+- SF Boost reads the current Salesforce session cookie (`sid`) locally so it can make Salesforce REST and Tooling API calls against the active org.
+- API-assisted features run only against the org open in the active Salesforce tab.
+- SF Boost does not send Salesforce data to third-party servers.
+- Settings are stored in `chrome.storage.sync`, and describe-cache data is stored in `chrome.storage.local`.
+
+Store submission artifacts:
+- Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md)
+- Reviewer notes: [docs/reviewer-notes.md](docs/reviewer-notes.md)
+- Support: [docs/support.md](docs/support.md)
 
 ---
 

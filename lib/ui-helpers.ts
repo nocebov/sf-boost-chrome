@@ -3,9 +3,10 @@
 /** Create a modal with backdrop, card, and close handler */
 export function createModal(
   id: string,
-  options: { width?: string } = {}
+  options: { width?: string; maxHeight?: string } = {}
 ): { backdrop: HTMLDivElement; card: HTMLDivElement; close: () => void } {
-  const { width = '560px' } = options;
+  const { width = '560px', maxHeight = 'calc(100vh - 40px)' } = options;
+  const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
   const backdrop = document.createElement('div');
   backdrop.id = `${id}-backdrop`;
@@ -19,6 +20,8 @@ export function createModal(
 
   const card = document.createElement('div');
   card.id = id;
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
   card.setAttribute('style', `
     position: fixed;
     top: 50%; left: 50%;
@@ -27,7 +30,7 @@ export function createModal(
     border-radius: 12px;
     width: ${width};
     max-width: calc(100vw - 40px);
-    max-height: calc(100vh - 40px);
+    max-height: ${maxHeight};
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -38,13 +41,24 @@ export function createModal(
     transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s;
   `);
 
+  let isClosed = false;
+  const cleanup = () => {
+    document.removeEventListener('keydown', onKeydown);
+  };
+
   const close = () => {
+    if (isClosed) return;
+    isClosed = true;
+    cleanup();
     backdrop.style.opacity = '0';
     card.style.opacity = '0';
     card.style.transform = 'translate(-50%, -50%) scale(0.98)';
     setTimeout(() => {
       backdrop.remove();
       card.remove();
+      if (previousActiveElement?.isConnected) {
+        previousActiveElement.focus();
+      }
     }, 150);
   };
 
@@ -60,11 +74,30 @@ export function createModal(
     card.style.transform = 'translate(-50%, -50%) scale(1)';
   });
 
-  // Escape key
+  // Keyboard: Escape to close + focus trap
   const onKeydown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       close();
-      document.removeEventListener('keydown', onKeydown);
+      return;
+    }
+    if (e.key === 'Tab') {
+      const focusable = card.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey) {
+        if (document.activeElement === first || !card.contains(document.activeElement)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last || !card.contains(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     }
   };
   document.addEventListener('keydown', onKeydown);

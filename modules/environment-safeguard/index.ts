@@ -2,6 +2,7 @@ import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import type { OrgType } from '../../lib/salesforce-urls';
 import { getOrgSettings } from '../../lib/storage';
+import { isValidCssColor } from '../../lib/salesforce-utils';
 
 const BADGE_ID = 'sfboost-env-badge';
 let originalTitle = '';
@@ -25,6 +26,15 @@ function getTitlePrefix(orgType: OrgType, sandboxName?: string): string {
   return '';
 }
 
+function updateExtensionBadge(text: string, color?: string): void {
+  chrome.runtime.sendMessage({
+    type: 'updateBadge',
+    data: { text, color },
+  }).catch(() => {
+    // Badge updates are optional.
+  });
+}
+
 async function injectBadge(ctx: ModuleContext): Promise<void> {
   // Remove existing badge if any
   document.getElementById(BADGE_ID)?.remove();
@@ -35,10 +45,13 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
   // Check for custom org settings
   const settings = await getOrgSettings(myDomain);
   const badgeEnabled = settings.badgeEnabled !== false; // default true
-  if (!badgeEnabled) return;
+  if (!badgeEnabled) {
+    updateExtensionBadge('');
+    return;
+  }
 
-  const bg = settings.badgeColor ?? defaults.bg;
-  const textColor = settings.badgeTextColor ?? defaults.text;
+  const bg = (settings.badgeColor && isValidCssColor(settings.badgeColor)) ? settings.badgeColor : defaults.bg;
+  const textColor = (settings.badgeTextColor && isValidCssColor(settings.badgeTextColor)) ? settings.badgeTextColor : defaults.text;
   let label = settings.badgeLabel ?? defaults.label;
 
   // For sandbox, show sandbox name if available
@@ -84,18 +97,12 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
   }
 
   // Update extension badge icon color
-  try {
-    await chrome.runtime.sendMessage({
-      type: 'updateBadge',
-      data: { text: label.slice(0, 4), color: bg },
-    });
-  } catch {
-    // Content script may not be able to send badge updates, that's fine
-  }
+  updateExtensionBadge(label.slice(0, 4), bg);
 }
 
 function removeBadge(): void {
   document.getElementById(BADGE_ID)?.remove();
+  updateExtensionBadge('');
   if (originalTitle) {
     document.title = originalTitle;
     originalTitle = '';

@@ -158,6 +158,7 @@ const fieldInspector: SFBoostModule = {
   defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
+    if (window.top !== window.self) return;
     currentCtx = ctx;
     if (ctx.pageContext.pageType === 'record') {
       createToggleButton();
@@ -167,6 +168,7 @@ const fieldInspector: SFBoostModule = {
   },
 
   async onNavigate(ctx: ModuleContext) {
+    if (window.top !== window.self) return;
     currentCtx = ctx;
     removeFieldBadges();
     isActive = false;
@@ -182,6 +184,7 @@ const fieldInspector: SFBoostModule = {
   },
 
   destroy() {
+    if (window.top !== window.self) return;
     removeFieldBadges();
     document.getElementById(TOGGLE_ID)?.remove();
     document.removeEventListener('sfboost:toggle-inspector', onToggleInspector);

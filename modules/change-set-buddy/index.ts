@@ -128,11 +128,19 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
 
   // Clear button
   const clearBtn = document.createElement('button');
-  clearBtn.innerHTML = `
-    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="display:block">
-      <path d="M1 1L13 13M1 13L13 1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-  `;
+  const clearSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  clearSvg.setAttribute('width', '12');
+  clearSvg.setAttribute('height', '12');
+  clearSvg.setAttribute('viewBox', '0 0 14 14');
+  clearSvg.setAttribute('fill', 'none');
+  clearSvg.style.display = 'block';
+  const clearPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  clearPath.setAttribute('d', 'M1 1L13 13M1 13L13 1');
+  clearPath.setAttribute('stroke', 'currentColor');
+  clearPath.setAttribute('stroke-width', '2');
+  clearPath.setAttribute('stroke-linecap', 'round');
+  clearSvg.appendChild(clearPath);
+  clearBtn.appendChild(clearSvg);
   clearBtn.title = 'Clear filter';
   clearBtn.setAttribute('style', `
     display: none; border: none; background: #f3f4f6;

@@ -1,7 +1,25 @@
-const DEFAULTS = {
-  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter', 'environment-safeguard', 'deep-dependency-inspector', 'hide-devops-bar'] as string[],
+export const STORAGE_VERSION = 1;
+
+export const DEFAULTS = {
+  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter', 'environment-safeguard', 'hide-devops-bar'] as string[],
   orgSettings: {} as Record<string, OrgSettings>,
 };
+
+/**
+ * Run storage migrations on extension install/update.
+ * Call from background script on `chrome.runtime.onInstalled`.
+ */
+export async function migrateStorage(): Promise<void> {
+  const result = await chrome.storage.sync.get('storageVersion');
+  const currentVersion = (result.storageVersion as number | undefined) ?? 0;
+
+  if (currentVersion < STORAGE_VERSION) {
+    // Future migrations go here as version numbers increase
+    // if (currentVersion < 2) { ... migrate v1 -> v2 ... }
+
+    await chrome.storage.sync.set({ storageVersion: STORAGE_VERSION });
+  }
+}
 
 export interface OrgSettings {
   label?: string;

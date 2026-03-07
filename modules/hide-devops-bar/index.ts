@@ -35,7 +35,8 @@ function startObserver(): void {
         checkAndRemoveNavBar();
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    const root = document.querySelector('.oneContent, .mainContentMark') ?? document.body;
+    observer.observe(root, { childList: true, subtree: true });
 }
 
 function stopObserver(): void {
@@ -48,7 +49,7 @@ function stopObserver(): void {
 const hideDevopsBar: SFBoostModule = {
     id: 'hide-devops-bar',
     name: 'Hide DevOps Center Bar',
-    description: 'Removes the useless DevOps Center navigation bar at the top of Setup pages.',
+    description: 'Hides the DevOps Center navigation bar on Setup pages.',
     defaultEnabled: true,
 
     async init(ctx: ModuleContext) {

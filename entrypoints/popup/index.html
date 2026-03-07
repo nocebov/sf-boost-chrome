@@ -10,10 +10,17 @@
   <div class="popup">
     <header class="header">
       <h1>SF Boost</h1>
-      <span class="version">v0.1.0</span>
+      <span class="version" id="version-label"></span>
     </header>
     <section class="modules" id="modules">
       <!-- Filled dynamically -->
+    </section>
+    <section class="data-note">
+      <p>API-assisted modules use your current Salesforce session locally against the active org only. Settings are stored in Chrome storage.</p>
+      <div class="resource-links">
+        <button id="privacy-btn" class="secondary-link">Privacy Policy</button>
+        <button id="support-btn" class="secondary-link">Support</button>
+      </div>
     </section>
     <footer class="footer">
       <button id="shortcuts-btn" class="shortcuts-link">⚙️ Keyboard Shortcuts</button>

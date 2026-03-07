@@ -342,6 +342,7 @@ const commandPalette: SFBoostModule = {
   defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
+    if (window.top !== window.self) return;
     currentCtx = ctx;
     document.addEventListener('sfboost:toggle-palette', togglePalette);
     // Also allow Ctrl+Shift+S directly from page
@@ -349,10 +350,12 @@ const commandPalette: SFBoostModule = {
   },
 
   async onNavigate(ctx: ModuleContext) {
+    if (window.top !== window.self) return;
     currentCtx = ctx;
   },
 
   destroy() {
+    if (window.top !== window.self) return;
     document.removeEventListener('sfboost:toggle-palette', togglePalette);
     document.removeEventListener('keydown', handleKeydown);
     const existing = document.getElementById(PALETTE_ID);

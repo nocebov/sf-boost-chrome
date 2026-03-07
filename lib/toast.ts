@@ -1,4 +1,4 @@
-export function showToast(message: string, position: 'center' | 'right' = 'center') {
+export function showToast(message: string, position: 'center' | 'right' = 'center', durationMs = 2000) {
   const toast = document.createElement('div');
   const isRight = position === 'right';
   toast.setAttribute('style', `
@@ -15,5 +15,5 @@ export function showToast(message: string, position: 'center' | 'right' = 'cente
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s';
     setTimeout(() => toast.remove(), 300);
-  }, 2000);
+  }, durationMs);
 }
