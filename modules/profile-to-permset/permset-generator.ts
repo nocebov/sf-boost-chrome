@@ -22,7 +22,18 @@ export interface PermSetCreationParams {
 export interface PermSetCreationResult {
   id: string;
   success: boolean;
+  rolledBack: boolean;
   failures: Array<{ type: string; name: string; error: string }>;
+  warnings: Array<{ type: string; name: string; error: string }>;
+}
+
+function assertNonEmpty(value: string, field: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new Error(`Missing ${field}`);
+  }
+
+  return normalized;
 }
 
 /**
@@ -31,10 +42,13 @@ export interface PermSetCreationResult {
 export async function createPermSetViaApi(
   params: PermSetCreationParams
 ): Promise<PermSetCreationResult> {
+  const name = assertNonEmpty(params.name, 'Permission Set name');
+  const label = assertNonEmpty(params.label, 'Permission Set label');
+
   const result = await sendMessage('createPermissionSet', {
     instanceUrl: params.instanceUrl,
-    name: params.name,
-    label: params.label,
+    name,
+    label,
     objectPermissions: params.objectPermissions.map(op => ({
       object: op.SobjectType,
       allowRead: op.PermissionsRead,
@@ -46,6 +60,7 @@ export async function createPermSetViaApi(
     })),
     fieldPermissions: params.fieldPermissions.map(fp => ({
       field: fp.Field,
+      sobjectType: fp.SobjectType,
       readable: fp.PermissionsRead,
       editable: fp.PermissionsEdit,
     })),
@@ -65,7 +80,9 @@ export async function createPermSetViaApi(
   return {
     id: result.id,
     success: result.success,
+    rolledBack: result.rolledBack,
     failures: result.failures ?? [],
+    warnings: result.warnings ?? [],
   };
 }
 

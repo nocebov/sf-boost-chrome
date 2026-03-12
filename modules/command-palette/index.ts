@@ -8,6 +8,13 @@ const PALETTE_ID = 'sfboost-command-palette';
 
 let currentCtx: ModuleContext | null = null;
 
+function isShortcutEditableTarget(target: EventTarget | null): boolean {
+  const el = target instanceof HTMLElement ? target : null;
+  if (!el) return false;
+  if (el.closest(`#${PALETTE_ID}`)) return false;
+  return el.isContentEditable || !!el.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
+}
+
 interface FlowRecord {
   DurableId: string;
   Label: string;
@@ -339,7 +346,6 @@ const commandPalette: SFBoostModule = {
   id: 'command-palette',
   name: 'Command Palette',
   description: 'Quick navigation to Setup pages via Alt+Shift+S',
-  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
@@ -364,6 +370,7 @@ const commandPalette: SFBoostModule = {
 };
 
 function handleKeydown(e: KeyboardEvent) {
+  if (isShortcutEditableTarget(e.target)) return;
   if (e.altKey && e.shiftKey && e.key === 'S') {
     e.preventDefault();
     togglePalette();

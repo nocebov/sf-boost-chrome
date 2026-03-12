@@ -121,7 +121,6 @@ const quickCopy: SFBoostModule = {
   id: 'quick-copy',
   name: 'Quick Copy',
   description: 'Copy record IDs and field values with one click',
-  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;

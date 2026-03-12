@@ -1,27 +1,9 @@
 import { getEnabledModules, setEnabledModules } from '../../lib/storage';
+import { MODULE_CATALOG } from '../../modules/catalog';
 
 const REPO_URL = 'https://github.com/nocebov/sf-boost-chrome';
 const PRIVACY_POLICY_URL = `${REPO_URL}/blob/master/docs/privacy-policy.md`;
-const SUPPORT_URL = `${REPO_URL}/issues`;
-
-interface ModuleInfo {
-  id: string;
-  name: string;
-  description: string;
-  info: string;
-}
-
-const ALL_MODULES: ModuleInfo[] = [
-  { id: 'command-palette', name: 'Command Palette', description: 'Quick navigation & tools', info: 'Gives quick access to Setup pages and records. Flow Search queries Salesforce only when you explicitly switch into that mode.' },
-  { id: 'field-inspector', name: 'Field Inspector', description: 'Show API names on fields', info: 'Reveals API names next to fields on record pages. Uses Salesforce describe metadata from the active org only when you toggle it on.' },
-  { id: 'quick-copy', name: 'Quick Copy', description: 'Copy record IDs & values', info: 'Adds a fast copy icon next to Record IDs and names. Click the icon to copy the ID directly to clipboard.' },
-  { id: 'table-filter', name: 'Table Filter', description: 'Quick search for tables', info: 'Works on Setup list views. Adds a search box above the table to instantly filter rows on the client-side.' },
-  { id: 'environment-safeguard', name: 'Environment Safeguard', description: 'Color-coded environment indicator', info: 'Displays a colored indicator on screen. Helps visually distinguish Production from Sandbox to avoid accidental changes.' },
-  { id: 'deep-dependency-inspector', name: 'Dependency Inspector', description: 'Tooling API scan for fields and Apex classes', info: 'Appears on Object Manager field pages and Apex Class pages. Uses Salesforce Tooling API against the active org only after you click Deep Scan.' },
-  { id: 'change-set-buddy', name: 'Change Set Buddy', description: 'Enhanced Change Set experience', info: 'Enhances native Change Sets UI in Setup. Gives sorting, search, and bulk selection capabilities when adding components.' },
-  { id: 'profile-to-permset', name: 'Profile to PermSet', description: 'Extract Profile permissions to Permission Set', info: 'Works on Profile pages in Setup. Reads permissions and creates the new Permission Set in the same Salesforce org using your current session only after you start the wizard.' },
-  { id: 'hide-devops-bar', name: 'Hide DevOps Center Bar', description: 'Hides the DevOps Center bottom bar', info: 'Automatically hides the persistent bottom DevOps Center bar on all pages, freeing up screen real estate.' },
-];
+const SUPPORT_URL = `${REPO_URL}/blob/master/docs/support.md`;
 
 const container = document.getElementById('modules');
 
@@ -31,7 +13,7 @@ async function render() {
   const enabledIds = await getEnabledModules();
   container.textContent = '';
 
-  for (const mod of ALL_MODULES) {
+  for (const mod of MODULE_CATALOG) {
     const item = document.createElement('div');
     item.className = 'module-item';
 

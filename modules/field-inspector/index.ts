@@ -8,6 +8,13 @@ const TOGGLE_ID = 'sfboost-inspector-toggle';
 let isActive = false;
 let currentCtx: ModuleContext | null = null;
 
+function isShortcutEditableTarget(target: EventTarget | null): boolean {
+  const el = target instanceof HTMLElement ? target : null;
+  if (!el) return false;
+  if (el.closest(`#${TOGGLE_ID}`)) return false;
+  return el.isContentEditable || !!el.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
+}
+
 function onToggleInspector() { toggleInspector(); }
 
 function createToggleButton() {
@@ -41,6 +48,11 @@ function createToggleButton() {
 }
 
 async function toggleInspector() {
+  if (!isActive && (!currentCtx || currentCtx.pageContext.pageType !== 'record' || !currentCtx.pageContext.objectApiName)) {
+    showToast('Field Inspector works only on record pages', 'right');
+    return;
+  }
+
   isActive = !isActive;
   const btn = document.getElementById(TOGGLE_ID) as HTMLButtonElement | null;
   if (btn) {
@@ -48,18 +60,22 @@ async function toggleInspector() {
   }
 
   if (isActive) {
-    await showFieldBadges();
+    const applied = await showFieldBadges();
+    if (!applied) {
+      isActive = false;
+      if (btn) btn.style.background = '#1a1a2e';
+    }
   } else {
     removeFieldBadges();
   }
 }
 
-async function showFieldBadges() {
-  if (!currentCtx) return;
+async function showFieldBadges(): Promise<boolean> {
+  if (!currentCtx) return false;
   const { objectApiName, instanceUrl } = currentCtx.pageContext;
   if (!objectApiName) {
     showToast('No object detected on this page', 'right');
-    return;
+    return false;
   }
 
   let describeData: any;
@@ -67,10 +83,13 @@ async function showFieldBadges() {
     describeData = await sendMessage('describeObject', { instanceUrl, objectApiName });
   } catch (e: any) {
     showToast(`Error: ${e.message}`, 'right');
-    return;
+    return false;
   }
 
-  if (!describeData?.fields) return;
+  if (!describeData?.fields) {
+    showToast(`No describe metadata returned for ${objectApiName}`, 'right');
+    return false;
+  }
 
   // Build label -> field info map
   const fieldMap = new Map<string, { apiName: string; type: string; required: boolean }>();
@@ -145,6 +164,7 @@ async function showFieldBadges() {
   });
 
   showToast(`Matched ${matched} fields on ${objectApiName}`, 'right');
+  return true;
 }
 
 function removeFieldBadges() {
@@ -155,7 +175,6 @@ const fieldInspector: SFBoostModule = {
   id: 'field-inspector',
   name: 'Field Inspector',
   description: 'Toggle to show API names next to field labels on record pages',
-  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
@@ -194,6 +213,7 @@ const fieldInspector: SFBoostModule = {
 };
 
 function handleKeydown(e: KeyboardEvent) {
+  if (isShortcutEditableTarget(e.target)) return;
   if (e.altKey && e.shiftKey && e.key === 'F') {
     e.preventDefault();
     toggleInspector();

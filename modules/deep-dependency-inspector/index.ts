@@ -18,6 +18,19 @@ interface PageInfo {
   componentType: string;
 }
 
+function extractSalesforceIdFromAddress(value: string | null): string | null {
+  if (!value) return null;
+
+  const rawCandidate = value.match(/([a-zA-Z0-9]{15,18})/)?.[1];
+  if (rawCandidate) return rawCandidate;
+
+  try {
+    return decodeURIComponent(value).match(/([a-zA-Z0-9]{15,18})/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function getComponentFromUrl(): PageInfo | null {
   const pathname = window.location.pathname;
 
@@ -31,8 +44,9 @@ function getComponentFromUrl(): PageInfo | null {
 
   // Apex Classes: /lightning/setup/ApexClasses/page?address=/{classId}
   if (pathname.includes('/lightning/setup/ApexClasses/')) {
-    const addrMatch = window.location.href.match(/address=\/(\w{15,18})/);
-    if (addrMatch?.[1]) return { componentId: addrMatch[1], componentType: 'ApexClass' };
+    const address = new URLSearchParams(window.location.search).get('address');
+    const classId = extractSalesforceIdFromAddress(address);
+    if (classId) return { componentId: classId, componentType: 'ApexClass' };
   }
 
   return null;
@@ -380,7 +394,6 @@ const deepDependencyInspector: SFBoostModule = {
   id: 'deep-dependency-inspector',
   name: 'Deep Dependency Inspector',
   description: 'Show where Object Manager fields and Apex classes are used',
-  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     currentCtx = ctx;

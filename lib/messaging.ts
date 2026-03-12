@@ -38,6 +38,7 @@ export interface MessageMap {
       }>;
       fieldPermissions: Array<{
         field: string;
+        sobjectType: string;
         readable: boolean;
         editable: boolean;
       }>;
@@ -45,7 +46,13 @@ export interface MessageMap {
       tabSettings: Array<{ name: string; visibility: string }>;
       setupEntityAccess: Array<{ entityId: string; entityType: string }>;
     };
-    response: { id: string; success: boolean; failures: Array<{ type: string; name: string; error: string }> };
+    response: {
+      id: string;
+      success: boolean;
+      rolledBack: boolean;
+      failures: Array<{ type: string; name: string; error: string }>;
+      warnings: Array<{ type: string; name: string; error: string }>;
+    };
   };
 }
 

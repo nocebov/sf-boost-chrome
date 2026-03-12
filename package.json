@@ -1,6 +1,6 @@
 {
   "name": "sf-boost-chrome",
-  "description": "Power tools for Salesforce developers and admins",
+  "description": "Salesforce productivity toolkit for admins and developers",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -10,10 +10,13 @@
     "build:reload": "bun run build && bun run scripts/reload-extension.ts",
     "zip": "wxt zip",
     "check": "tsc --noEmit",
+    "test:smoke": "bun run scripts/smoke-test.mjs",
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.37",
+    "puppeteer-core": "^24.6.1",
+    "selfsigned": "^3.0.1",
     "typescript": "^5.8.0",
     "wxt": "^0.20.0"
   }

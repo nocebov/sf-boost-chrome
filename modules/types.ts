@@ -19,7 +19,6 @@ export interface SFBoostModule {
   id: string;
   name: string;
   description: string;
-  defaultEnabled: boolean;
   init(ctx: ModuleContext): Promise<void>;
   onNavigate(ctx: ModuleContext): Promise<void>;
   destroy(): void;

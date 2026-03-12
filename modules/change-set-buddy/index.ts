@@ -359,7 +359,6 @@ const changeSetBuddy: SFBoostModule = {
   id: 'change-set-buddy',
   name: 'Change Set Buddy',
   description: 'Enhanced Change Set experience with search and filter',
-  defaultEnabled: false,
 
   async init(_ctx: ModuleContext) {
     if (isChangeSetPage()) {

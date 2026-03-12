@@ -74,14 +74,103 @@ function permissionFieldToLabel(fieldName: string): string {
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
 }
 
-/** Safely run a query, returning empty array on failure (graceful degradation). */
-async function safeQuery(instanceUrl: string, query: string): Promise<any[]> {
-  try {
-    const result = await sendMessage('executeSOQLAll', { instanceUrl, query });
-    return result.records || [];
-  } catch {
-    return [];
+function formatReadError(reason: unknown): string {
+  if (reason instanceof Error) {
+    return reason.message;
   }
+
+  return typeof reason === 'string' ? reason : 'Unknown read error';
+}
+
+function unwrapQueryResult<T>(
+  label: string,
+  result: PromiseSettledResult<any>,
+  failures: string[],
+): T[] {
+  if (result.status === 'fulfilled') {
+    return (result.value.records || []) as T[];
+  }
+
+  failures.push(`${label}: ${formatReadError(result.reason)}`);
+  return [];
+}
+
+function normalizeObjectApiName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function mergeObjectPermissionRecords(records: ObjectPermission[]): ObjectPermission[] {
+  const merged = new Map<string, ObjectPermission>();
+
+  for (const record of records) {
+    const sobjectType = normalizeObjectApiName(record.SobjectType);
+    if (!sobjectType) continue;
+
+    const key = sobjectType.toLowerCase();
+    const existing = merged.get(key);
+    if (existing) {
+      existing.PermissionsRead ||= record.PermissionsRead;
+      existing.PermissionsCreate ||= record.PermissionsCreate;
+      existing.PermissionsEdit ||= record.PermissionsEdit;
+      existing.PermissionsDelete ||= record.PermissionsDelete;
+      existing.PermissionsViewAllRecords ||= record.PermissionsViewAllRecords;
+      existing.PermissionsModifyAllRecords ||= record.PermissionsModifyAllRecords;
+      continue;
+    }
+
+    merged.set(key, {
+      SobjectType: sobjectType,
+      PermissionsRead: !!record.PermissionsRead,
+      PermissionsCreate: !!record.PermissionsCreate,
+      PermissionsEdit: !!record.PermissionsEdit,
+      PermissionsDelete: !!record.PermissionsDelete,
+      PermissionsViewAllRecords: !!record.PermissionsViewAllRecords,
+      PermissionsModifyAllRecords: !!record.PermissionsModifyAllRecords,
+    });
+  }
+
+  return [...merged.values()].sort((a, b) => a.SobjectType.localeCompare(b.SobjectType));
+}
+
+function normalizeFieldPermissionRecord(record: FieldPermission): FieldPermission | null {
+  const rawField = typeof record.Field === 'string' ? record.Field.trim() : '';
+  const rawSobjectType = normalizeObjectApiName(record.SobjectType);
+  const normalizedField = rawField.includes('.')
+    ? rawField
+    : (rawField && rawSobjectType ? `${rawSobjectType}.${rawField}` : rawField);
+  const normalizedSobjectType = rawSobjectType || normalizedField.split('.')[0] || '';
+
+  if (!normalizedField || !normalizedSobjectType) {
+    return null;
+  }
+
+  return {
+    Field: normalizedField,
+    SobjectType: normalizedSobjectType,
+    PermissionsRead: !!record.PermissionsRead,
+    PermissionsEdit: !!record.PermissionsEdit,
+  };
+}
+
+function mergeFieldPermissionRecords(records: FieldPermission[]): FieldPermission[] {
+  const merged = new Map<string, FieldPermission>();
+
+  for (const record of records) {
+    const normalized = normalizeFieldPermissionRecord(record);
+    if (!normalized) continue;
+
+    const key = normalized.Field.toLowerCase();
+    const existing = merged.get(key);
+    if (existing) {
+      existing.PermissionsRead ||= normalized.PermissionsRead;
+      existing.PermissionsEdit ||= normalized.PermissionsEdit;
+      continue;
+    }
+
+    merged.set(key, normalized);
+  }
+
+  return [...merged.values()].sort((a, b) => a.Field.localeCompare(b.Field));
 }
 
 /**
@@ -106,71 +195,74 @@ export async function readProfilePermissions(
   const profileName = psResult.records[0].Profile?.Name || 'Unknown Profile';
 
   // Step 2: Discover available User Permission fields via describe
-  let userPermFieldNames: string[] = [];
-  try {
-    const describe = await sendMessage('describeObject', {
-      instanceUrl,
-      objectApiName: 'PermissionSet',
-    });
-    userPermFieldNames = (describe.fields || [])
-      .filter((f: any) => f.type === 'boolean' && f.name.startsWith('Permissions'))
-      .map((f: any) => f.name);
-  } catch {
-    // If describe fails, skip user permissions
-  }
+  const describe = await sendMessage('describeObject', {
+    instanceUrl,
+    objectApiName: 'PermissionSet',
+  });
+  const userPermFieldNames = (describe.fields || [])
+    .filter((f: any) => f.type === 'boolean' && f.name.startsWith('Permissions'))
+    .map((f: any) => f.name);
 
   // Step 3: Run all permission queries in parallel
-  const queries: Promise<any>[] = [
-    // Object Permissions
+  const queryPromises: Promise<any>[] = [
     sendMessage('executeSOQLAll', {
       instanceUrl,
       query: `SELECT SobjectType, PermissionsRead, PermissionsCreate, PermissionsEdit, PermissionsDelete, PermissionsViewAllRecords, PermissionsModifyAllRecords FROM ObjectPermissions WHERE ParentId = '${permissionSetId}' ORDER BY SobjectType`,
     }),
-    // Field Permissions
     sendMessage('executeSOQLAll', {
       instanceUrl,
       query: `SELECT Field, SobjectType, PermissionsRead, PermissionsEdit FROM FieldPermissions WHERE ParentId = '${permissionSetId}' ORDER BY SobjectType, Field`,
     }),
-    // Tab Settings
-    safeQuery(instanceUrl,
-      `SELECT Name, Visibility FROM PermissionSetTabSetting WHERE ParentId = '${permissionSetId}' ORDER BY Name`,
-    ),
-    // Setup Entity Access (Apex Class, VF Page, Custom Permission)
-    safeQuery(instanceUrl,
-      `SELECT SetupEntityId, SetupEntityType, SetupEntity.Name FROM SetupEntityAccess WHERE ParentId = '${permissionSetId}' ORDER BY SetupEntityType, SetupEntity.Name`,
-    ),
+    sendMessage('executeSOQLAll', {
+      instanceUrl,
+      query: `SELECT Name, Visibility FROM PermissionSetTabSetting WHERE ParentId = '${permissionSetId}' ORDER BY Name`,
+    }),
+    sendMessage('executeSOQLAll', {
+      instanceUrl,
+      query: `SELECT SetupEntityId, SetupEntityType, SetupEntity.Name FROM SetupEntityAccess WHERE ParentId = '${permissionSetId}' ORDER BY SetupEntityType, SetupEntity.Name`,
+    }),
   ];
 
-  // User Permissions query (dynamic fields)
-  let userPermQuery: Promise<any> | null = null;
   if (userPermFieldNames.length > 0) {
-    userPermQuery = sendMessage('executeSOQLAll', {
-      instanceUrl,
-      query: `SELECT ${userPermFieldNames.join(', ')} FROM PermissionSet WHERE Id = '${permissionSetId}'`,
-    }).catch(() => ({ records: [] }));
-    queries.push(userPermQuery);
+    queryPromises.push(
+      sendMessage('executeSOQLAll', {
+        instanceUrl,
+        query: `SELECT ${userPermFieldNames.join(', ')} FROM PermissionSet WHERE Id = '${permissionSetId}'`,
+      }),
+    );
   }
 
-  const results = await Promise.all(queries);
-  const [objResult, fieldResult] = results;
-  const tabRecords = results[2] as any[];
-  const seaRecords = results[3] as any[];
+  const results = await Promise.allSettled(queryPromises);
+  const queryFailures: string[] = [];
+  const objectPermissionRecords = unwrapQueryResult<ObjectPermission>('Object Permissions', results[0]!, queryFailures);
+  const fieldPermissionRecords = unwrapQueryResult<FieldPermission>('Field Permissions', results[1]!, queryFailures);
+  const tabRecords = unwrapQueryResult<TabSetting>('Tab Settings', results[2]!, queryFailures);
+  const seaRecords = unwrapQueryResult<any>('Setup Entity Access', results[3]!, queryFailures);
+
+  let permissionSetRecords: any[] = [];
+  if (userPermFieldNames.length > 0 && results[4]) {
+    permissionSetRecords = unwrapQueryResult<any>('User Permissions', results[4], queryFailures);
+  }
+
+  if (queryFailures.length > 0) {
+    throw new Error(`Failed to read profile completely: ${queryFailures.join('; ')}`);
+  }
 
   // Filter out objects where all permissions are false
-  const objectPermissions = (objResult.records || []).filter((op: ObjectPermission) =>
+  const objectPermissions = mergeObjectPermissionRecords(objectPermissionRecords).filter((op: ObjectPermission) =>
     op.PermissionsRead || op.PermissionsCreate || op.PermissionsEdit ||
     op.PermissionsDelete || op.PermissionsViewAllRecords || op.PermissionsModifyAllRecords
   );
 
   // Filter out fields where all permissions are false
-  const fieldPermissions = (fieldResult.records || []).filter((fp: FieldPermission) =>
+  const fieldPermissions = mergeFieldPermissionRecords(fieldPermissionRecords).filter((fp: FieldPermission) =>
     fp.PermissionsRead || fp.PermissionsEdit
   );
 
   // Extract User Permissions (only those that are true)
   const userPermissions: UserPermission[] = [];
-  if (userPermFieldNames.length > 0 && results[4]) {
-    const psRecord = (results[4].records || [])[0];
+  if (userPermFieldNames.length > 0) {
+    const psRecord = permissionSetRecords[0];
     if (psRecord) {
       for (const fieldName of userPermFieldNames) {
         if (psRecord[fieldName] === true) {

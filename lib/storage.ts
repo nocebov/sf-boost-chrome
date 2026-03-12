@@ -1,9 +1,29 @@
+import { DEFAULT_ENABLED_MODULE_IDS, MODULE_CATALOG } from '../modules/catalog';
+
 export const STORAGE_VERSION = 1;
 
 export const DEFAULTS = {
-  enabledModules: ['command-palette', 'field-inspector', 'quick-copy', 'table-filter', 'environment-safeguard', 'hide-devops-bar'] as string[],
+  enabledModules: [...DEFAULT_ENABLED_MODULE_IDS] as string[],
   orgSettings: {} as Record<string, OrgSettings>,
 };
+
+const KNOWN_MODULE_IDS = new Set(MODULE_CATALOG.map((module) => module.id));
+
+function normalizeEnabledModuleIds(ids: unknown): string[] {
+  if (!Array.isArray(ids)) return [...DEFAULTS.enabledModules];
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of ids) {
+    if (typeof value !== 'string') continue;
+    if (!KNOWN_MODULE_IDS.has(value) || seen.has(value)) continue;
+    seen.add(value);
+    normalized.push(value);
+  }
+
+  return normalized.length > 0 ? normalized : [...DEFAULTS.enabledModules];
+}
 
 /**
  * Run storage migrations on extension install/update.
@@ -34,11 +54,11 @@ export interface OrgSettings {
 
 export async function getEnabledModules(): Promise<string[]> {
   const result = await chrome.storage.sync.get('enabledModules');
-  return (result.enabledModules as string[] | undefined) ?? DEFAULTS.enabledModules;
+  return normalizeEnabledModuleIds(result.enabledModules);
 }
 
 export async function setEnabledModules(ids: string[]): Promise<void> {
-  await chrome.storage.sync.set({ enabledModules: ids });
+  await chrome.storage.sync.set({ enabledModules: normalizeEnabledModuleIds(ids) });
 }
 
 export async function getOrgSettings(domain: string): Promise<OrgSettings> {

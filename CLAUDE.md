@@ -10,11 +10,10 @@ bun run dev          # Dev server with HMR (auto-reloads extension)
 bun run build        # Production build → .output/chrome-mv3/
 bun run zip          # Package for Chrome Web Store
 bun run check        # TypeScript type-check (no emit)
+bun run test:smoke   # Popup + content-script smoke test
 ```
 
 After building, load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` with Developer Mode on.
-
-There are no automated tests in this project.
 
 ## Architecture
 
@@ -35,7 +34,6 @@ interface SFBoostModule {
   id: string;
   name: string;
   description: string;
-  defaultEnabled: boolean;
   init(ctx: ModuleContext): Promise<void>;
   onNavigate(ctx: ModuleContext): Promise<void>;
   destroy(): void;
@@ -49,7 +47,7 @@ The `ModuleRegistry` (`modules/registry.ts`) manages lifecycle: `initModules` in
 ### Lib Utilities
 
 - **`lib/messaging.ts`** — Type-safe content↔background messaging. `sendMessage(type, data)` from content; `onMessage(type, handler)` in background. All message types are defined in `MessageMap`.
-- **`lib/storage.ts`** — `chrome.storage.sync` for enabled module IDs and per-org settings; `chrome.storage.local` for object describe cache (1-hour TTL, max 25 entries).
+- **`lib/storage.ts`** — `chrome.storage.sync` for enabled module IDs and per-org settings; `chrome.storage.local` for object describe cache (1-hour TTL, max 25 entries). Default-enabled modules come from `modules/catalog.ts`.
 - **`lib/salesforce-urls.ts`** — Detects org type (production/sandbox/developer/scratch/trailhead) from hostname; parses Lightning URL path into `PageType` and extracts `objectApiName`/`recordId`.
 - **`lib/ui-helpers.ts`** — Shared DOM utilities: `createModal`, `createSpinner`, `createButton`.
 - **`lib/toast.ts`** — Toast notification helper.
@@ -73,8 +71,8 @@ Authentication uses the `sid` cookie read via `chrome.cookies` in `session-manag
 | `quick-copy` | enabled | `modules/quick-copy/` |
 | `table-filter` | enabled | `modules/table-filter/` |
 | `environment-safeguard` | enabled | `modules/environment-safeguard/` |
-| `deep-dependency-inspector` | enabled | `modules/deep-dependency-inspector/` |
-| `hide-devops-bar` | enabled | `modules/hide-devops-bar/` |
+| `deep-dependency-inspector` | disabled | `modules/deep-dependency-inspector/` |
+| `hide-devops-bar` | disabled | `modules/hide-devops-bar/` |
 | `change-set-buddy` | disabled | `modules/change-set-buddy/` |
 | `profile-to-permset` | disabled | `modules/profile-to-permset/` |
 
@@ -87,5 +85,5 @@ The content script patches `history.pushState`/`history.replaceState` and listen
 1. Create `modules/<module-id>/index.ts`
 2. Implement `SFBoostModule` and call `registry.register(module)` at the end
 3. Import it in `entrypoints/content/index.ts`
-4. Add the module info entry to `ALL_MODULES` in `entrypoints/popup/main.ts`
-5. Add to `DEFAULTS.enabledModules` in `lib/storage.ts` if it should be enabled by default
+4. Add the module metadata entry to `MODULE_CATALOG` in `modules/catalog.ts`
+5. Decide the `defaultEnabled` value in `modules/catalog.ts` because that file is the source of truth for defaults shown in the popup and storage

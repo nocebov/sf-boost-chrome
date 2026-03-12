@@ -3,36 +3,65 @@ import type { SFBoostModule, ModuleContext } from '../types';
 
 let observer: MutationObserver | null = null;
 let currentCtx: ModuleContext | null = null;
+const TARGET_ATTR = 'data-sfboost-hide-devops-target';
+const STYLE_ID = 'sfboost-hide-devops-style';
 
-function checkAndRemoveNavBar(): boolean {
-    // Find the exact layout container that holds the DevOps Center panel
-    const navBars = document.querySelectorAll('lightning-layout.navBar-container');
-    let removed = false;
+function isSetupLikePage(ctx: ModuleContext): boolean {
+    try {
+        const pathname = new URL(ctx.pageContext.url).pathname;
+        return pathname.startsWith('/lightning/setup/')
+            || ctx.pageContext.pageType === 'setup'
+            || ctx.pageContext.pageType === 'change-set';
+    } catch {
+        return ctx.pageContext.pageType === 'setup' || ctx.pageContext.pageType === 'change-set';
+    }
+}
 
-    navBars.forEach((navBar) => {
-        // Check if it contains the devops elements to avoid removing unrelated navbars
+function ensureHideStyle(): void {
+    if (document.getElementById(STYLE_ID)) return;
+
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      [${TARGET_ATTR}="true"] {
+        display: none !important;
+        visibility: hidden !important;
+      }
+    `;
+    document.head.appendChild(style);
+}
+
+function markDevopsBarTargets(root: ParentNode = document): void {
+    const scope = root instanceof Document || root instanceof Element ? root : document;
+    scope.querySelectorAll<HTMLElement>('lightning-layout.navBar-container').forEach((navBar) => {
         if (navBar.querySelector('devops_center-org-info, devops_center-panel-button')) {
-            navBar.remove();
-            removed = true;
+            navBar.setAttribute(TARGET_ATTR, 'true');
         }
     });
+}
 
-    return removed;
+function restoreNavBarTargets(): void {
+    document.querySelectorAll<HTMLElement>(`[${TARGET_ATTR}]`).forEach((navBar) => {
+        navBar.removeAttribute(TARGET_ATTR);
+    });
+    document.getElementById(STYLE_ID)?.remove();
 }
 
 function startObserver(): void {
-    // Initial check
-    if (checkAndRemoveNavBar()) {
-        // If we removed it immediately, we might not need the observer, 
-        // but in SPAs, it might come back on navigation. We'll keep observing but only on body.
-    }
+    ensureHideStyle();
+    markDevopsBarTargets();
 
     if (observer) {
         observer.disconnect();
     }
 
-    observer = new MutationObserver(() => {
-        checkAndRemoveNavBar();
+    observer = new MutationObserver((records) => {
+        for (const record of records) {
+            for (const node of Array.from(record.addedNodes)) {
+                if (!(node instanceof Element)) continue;
+                markDevopsBarTargets(node);
+            }
+        }
     });
 
     const root = document.querySelector('.oneContent, .mainContentMark') ?? document.body;
@@ -50,24 +79,26 @@ const hideDevopsBar: SFBoostModule = {
     id: 'hide-devops-bar',
     name: 'Hide DevOps Center Bar',
     description: 'Hides the DevOps Center navigation bar on Setup pages.',
-    defaultEnabled: true,
 
     async init(ctx: ModuleContext) {
         currentCtx = ctx;
         if (window.top !== window.self) return;
+        if (!isSetupLikePage(ctx)) return;
         startObserver();
     },
 
     async onNavigate(ctx: ModuleContext) {
         currentCtx = ctx;
         if (window.top !== window.self) return;
-
-        // Attempt removal again instantly on navigation, as DOM might rebuild
-        checkAndRemoveNavBar();
+        stopObserver();
+        restoreNavBarTargets();
+        if (!isSetupLikePage(ctx)) return;
+        startObserver();
     },
 
     destroy() {
         stopObserver();
+        restoreNavBarTargets();
         currentCtx = null;
     },
 };

@@ -101,7 +101,9 @@ On Outbound/Inbound Change Set pages, a search bar is injected above the compone
 
 Removes the DevOps Center navigation bar from Setup pages if you don't use it.
 
-No configuration needed — just enable and the bar disappears. Works across SPA navigations.
+> Disabled by default — enable in the extension popup when you explicitly want it.
+
+Once enabled, the bar disappears on supported Setup pages and stays hidden across SPA navigations.
 
 ---
 
@@ -111,11 +113,17 @@ No configuration needed — just enable and the bar disappears. Works across SPA
 # Install dependencies
 bun install
 
+# Type-check
+bun run check
+
 # Development server (auto-reloads on changes)
 bun run dev
 
 # Build for production
 bun run build
+
+# Run popup/content smoke test against the built extension
+bun run test:smoke
 
 # Package for Chrome Web Store
 bun run zip
@@ -128,14 +136,18 @@ Load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` 
 ## Data Handling
 
 - SF Boost reads the current Salesforce session cookie (`sid`) locally so it can make Salesforce REST and Tooling API calls against the active org.
+- The `sid` cookie is read only inside Chrome via the `cookies` permission. It is used to authenticate direct requests from the extension to Salesforce, not to any developer-operated backend.
 - API-assisted features run only against the org open in the active Salesforce tab.
 - SF Boost does not send Salesforce data to third-party servers.
 - Settings are stored in `chrome.storage.sync`, and describe-cache data is stored in `chrome.storage.local`.
+- The extension is built around a single purpose: improving day-to-day Salesforce admin and developer workflows inside the native Salesforce UI.
 
 Store submission artifacts:
 - Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md)
 - Reviewer notes: [docs/reviewer-notes.md](docs/reviewer-notes.md)
 - Support: [docs/support.md](docs/support.md)
+- Admin packet: [docs/admin-packet.md](docs/admin-packet.md)
+- Release checklist: [docs/store-release-checklist.md](docs/store-release-checklist.md)
 
 ---
 

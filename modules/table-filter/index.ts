@@ -588,7 +588,6 @@ const tableFilter: SFBoostModule = {
   id: 'table-filter',
   name: 'Table Filter',
   description: 'Quick search/filter for Salesforce tables',
-  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     const { pageType } = ctx.pageContext;

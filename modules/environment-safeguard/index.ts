@@ -113,7 +113,6 @@ const environmentSafeguard: SFBoostModule = {
   id: 'environment-safeguard',
   name: 'Environment Safeguard',
   description: 'Color-coded environment indicator near SF logo',
-  defaultEnabled: true,
 
   async init(ctx: ModuleContext) {
     currentCtx = ctx;
