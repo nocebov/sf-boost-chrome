@@ -78,7 +78,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     id: 'hide-devops-bar',
     name: 'Hide DevOps Center Bar',
     description: 'Hide the DevOps Center bottom bar',
-    info: 'Optionally hides the persistent DevOps Center bar on Setup pages. Disabled by default to avoid surprising changes to the native Salesforce UI.',
+    info: 'Hides the persistent DevOps Center bar on all Salesforce pages. Disabled by default to avoid surprising changes to the native Salesforce UI.',
     defaultEnabled: false,
     accessLevel: 'ui-only',
   },

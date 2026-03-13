@@ -344,6 +344,7 @@ async function main() {
       headless: process.env.SFBOOST_SMOKE_HEADLESS === '0' ? false : 'new',
       acceptInsecureCerts: true,
       args: [
+        '--no-sandbox',
         '--no-first-run',
         '--no-default-browser-check',
         '--disable-dev-shm-usage',
