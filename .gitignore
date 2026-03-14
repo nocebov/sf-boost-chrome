@@ -5,3 +5,5 @@ node_modules/
 .env.local
 SESSION_LOG.md
 .claude/
+build-reload.sh
+CLAUDE.md
