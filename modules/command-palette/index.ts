@@ -3,6 +3,8 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import { SETUP_COMMANDS, type PaletteCommand } from './setup-commands';
 import { fuzzySearch } from './search-engine';
 import { sendMessage } from '../../lib/messaging';
+import { tokens } from '../../lib/design-tokens';
+import { showToast } from '../../lib/toast';
 
 const PALETTE_ID = 'sfboost-command-palette';
 
@@ -36,6 +38,118 @@ const FLOW_TYPE_LABELS: Record<string, string> = {
   RecordAfterSave: 'After Save Flow',
 };
 
+interface ProfileRecord {
+  Id: string;
+  Name: string;
+  UserType: string;
+  Description: string | null;
+}
+
+const PROFILE_USER_TYPE_LABELS: Record<string, string> = {
+  Standard: 'Standard',
+  PowerPartner: 'Partner',
+  CSPLitePortal: 'Customer Portal',
+  CustomerSuccess: 'Customer Community',
+  PowerCustomerSuccess: 'Customer Community Plus',
+  CsnOnly: 'Chatter',
+  Guest: 'Guest',
+};
+
+function profilesToCommands(profiles: ProfileRecord[]): PaletteCommand[] {
+  return profiles.map((p) => ({
+    id: `profile-${p.Id}`,
+    label: p.Name,
+    keywords: [p.Name, p.UserType, p.Description ?? ''],
+    category: `${PROFILE_USER_TYPE_LABELS[p.UserType] ?? p.UserType} Profile`,
+    path: `/lightning/setup/EnhancedProfiles/page?address=%2F${p.Id}`,
+    icon: '\u{1F511}',
+  }));
+}
+
+interface PermSetRecord {
+  Id: string;
+  Name: string;
+  Label: string;
+  Description: string | null;
+  IsCustom: boolean;
+  NamespacePrefix: string | null;
+}
+
+function permSetsToCommands(permSets: PermSetRecord[]): PaletteCommand[] {
+  return permSets.map((ps) => ({
+    id: `permset-${ps.Id}`,
+    label: ps.Label,
+    keywords: [ps.Name, ps.Label, ps.Description ?? '', ps.NamespacePrefix ?? ''],
+    category: `${ps.IsCustom ? 'Custom' : 'Standard'}${ps.NamespacePrefix ? ` \u00b7 ${ps.NamespacePrefix}` : ''} \u00b7 ${ps.Name}`,
+    path: `/lightning/setup/PermSets/page?address=%2F${ps.Id}`,
+    icon: ps.IsCustom ? '\u{1F6E1}' : '\u{1F4CB}',
+  }));
+}
+
+interface ApexClassRecord {
+  Id: string;
+  Name: string;
+  ApiVersion: number;
+  Status: string;
+  NamespacePrefix: string | null;
+  LengthWithoutComments: number;
+}
+
+function apexClassesToCommands(classes: ApexClassRecord[]): PaletteCommand[] {
+  return classes.map((cls) => ({
+    id: `apex-class-${cls.Id}`,
+    label: cls.Name,
+    keywords: [cls.Name, cls.NamespacePrefix ?? '', `v${cls.ApiVersion}`],
+    category: `${cls.Status} \u00b7 v${cls.ApiVersion}${cls.NamespacePrefix ? ` \u00b7 ${cls.NamespacePrefix}` : ''} \u00b7 ${cls.LengthWithoutComments} chars`,
+    path: `/${cls.Id}`,
+    icon: cls.Status === 'Active' ? '\u{1F4BB}' : '\u{1F6AB}',
+  }));
+}
+
+interface ApexTriggerRecord {
+  Id: string;
+  Name: string;
+  ApiVersion: number;
+  Status: string;
+  NamespacePrefix: string | null;
+  TableEnumOrId: string;
+}
+
+function apexTriggersToCommands(triggers: ApexTriggerRecord[]): PaletteCommand[] {
+  return triggers.map((trg) => ({
+    id: `apex-trigger-${trg.Id}`,
+    label: trg.Name,
+    keywords: [trg.Name, trg.TableEnumOrId, trg.NamespacePrefix ?? '', `v${trg.ApiVersion}`],
+    category: `${trg.TableEnumOrId} \u00b7 ${trg.Status} \u00b7 v${trg.ApiVersion}${trg.NamespacePrefix ? ` \u00b7 ${trg.NamespacePrefix}` : ''}`,
+    path: `/${trg.Id}`,
+    icon: trg.Status === 'Active' ? '\u{2699}' : '\u{1F6AB}',
+  }));
+}
+
+function soqlRecordsToCommands(records: any[]): PaletteCommand[] {
+  return records.slice(0, 50).map((rec, i) => {
+    const name = rec.Name ?? rec.DeveloperName ?? rec.Label ?? rec.Id ?? `Row ${i + 1}`;
+    const id = rec.Id ?? `row-${i}`;
+    const fields = Object.entries(rec)
+      .filter(([k, v]) => k !== 'attributes' && v != null)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(' \u00b7 ');
+
+    return {
+      id: `soql-${id}-${i}`,
+      label: String(name),
+      keywords: [String(name), id],
+      category: fields.length > 80 ? fields.slice(0, 80) + '...' : fields,
+      action: () => {
+        const copyValue = rec.Id ?? fields;
+        navigator.clipboard.writeText(copyValue);
+        showToast(`Copied: ${copyValue.length > 40 ? copyValue.slice(0, 40) + '...' : copyValue}`);
+      },
+      icon: '\u{1F4C4}',
+    };
+  });
+}
+
 function flowsToCommands(flows: FlowRecord[]): PaletteCommand[] {
   return flows.map((flow) => ({
     id: `flow-${flow.DurableId}`,
@@ -59,12 +173,12 @@ function createPaletteUI() {
     background: rgba(0,0,0,0.2);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    z-index: 9999999;
+    z-index: ${tokens.zIndex.overlay};
     display: flex; align-items: flex-start; justify-content: center;
     padding-top: 15vh;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: ${tokens.font.family.sans};
     opacity: 0;
-    transition: opacity 0.15s ease-out;
+    transition: opacity ${tokens.transition.normal} ease-out;
   `);
 
   // Trigger animation after creation
@@ -74,13 +188,13 @@ function createPaletteUI() {
 
   const card = document.createElement('div');
   card.setAttribute('style', `
-    background: #fff; border-radius: 12px;
+    background: ${tokens.color.surfaceBase}; border-radius: ${tokens.radius.xl};
     width: 560px; max-height: 420px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    box-shadow: ${tokens.shadow.lg};
     display: flex; flex-direction: column;
     overflow: hidden;
     transform: scale(0.98) translateY(-10px);
-    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform ${tokens.transition.modalEase};
   `);
 
   requestAnimationFrame(() => {
@@ -91,11 +205,11 @@ function createPaletteUI() {
   const subModeHeader = document.createElement('div');
   subModeHeader.setAttribute('style', `
     display: none;
-    padding: 8px 16px;
-    background: #f0f4ff;
-    align-items: center; gap: 8px;
-    font-size: 12px; color: #6b7280;
-    border-bottom: 1px solid #e5e7eb;
+    padding: ${tokens.space.md} ${tokens.space.xl};
+    background: ${tokens.color.surfaceSelected};
+    align-items: center; gap: ${tokens.space.md};
+    font-size: ${tokens.font.size.sm}; color: ${tokens.color.textTertiary};
+    border-bottom: 1px solid ${tokens.color.borderDefault};
     cursor: pointer;
     user-select: none;
   `);
@@ -104,10 +218,10 @@ function createPaletteUI() {
   input.type = 'text';
   input.placeholder = 'Search Setup pages, actions...';
   input.setAttribute('style', `
-    width: 100%; padding: 16px 20px;
+    width: 100%; padding: ${tokens.space.xl} ${tokens.space['2xl']};
     border: none; outline: none;
-    font-size: 16px; color: #1a1a2e;
-    border-bottom: 1px solid #e5e7eb;
+    font-size: ${tokens.font.size.lg}; color: ${tokens.color.textPrimary};
+    border-bottom: 1px solid ${tokens.color.borderDefault};
     background: transparent;
   `);
 
@@ -116,23 +230,90 @@ function createPaletteUI() {
     overflow-y: auto; flex: 1;
     max-height: 340px;
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-color: ${tokens.color.borderMuted} transparent;
   `);
 
+  // Quick action buttons bar
+  const quickActionBar = document.createElement('div');
+  quickActionBar.setAttribute('style', `
+    display: flex;
+    gap: ${tokens.space.sm};
+    padding: ${tokens.space.md} ${tokens.space.xl};
+    border-bottom: 1px solid ${tokens.color.borderDefault};
+    flex-wrap: wrap;
+  `);
+
+  interface QuickAction {
+    key: string;
+    label: string;
+    subMode?: string;
+    actionId?: string;
+  }
+
+  const quickActions: QuickAction[] = [
+    { key: '1', label: 'Profile', subMode: 'profile-search' },
+    { key: '2', label: 'PermSet', subMode: 'permset-search' },
+    { key: '3', label: 'Flow', subMode: 'flow-search' },
+    { key: '4', label: 'Class', subMode: 'apex-class-search' },
+    { key: '5', label: 'Trigger', subMode: 'apex-trigger-search' },
+    { key: '6', label: 'Debug', actionId: 'toggle-debug-log' },
+    { key: '7', label: 'SOQL', subMode: 'soql-query' },
+  ];
+
+  for (const qa of quickActions) {
+    const pill = document.createElement('button');
+    pill.setAttribute('style', `
+      padding: ${tokens.space.xs} ${tokens.space.lg};
+      border: 1px solid ${tokens.color.borderDefault};
+      border-radius: ${tokens.radius.pill};
+      background: ${tokens.color.surfaceBase};
+      color: ${tokens.color.textSecondary};
+      font-size: ${tokens.font.size.sm};
+      font-family: ${tokens.font.family.sans};
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background ${tokens.transition.fast}, border-color ${tokens.transition.fast};
+    `);
+    pill.textContent = `${qa.key}\u00b7${qa.label}`;
+    pill.addEventListener('mouseenter', () => {
+      pill.style.background = tokens.color.surfaceSelected;
+      pill.style.borderColor = tokens.color.primaryBorder;
+    });
+    pill.addEventListener('mouseleave', () => {
+      pill.style.background = tokens.color.surfaceBase;
+      pill.style.borderColor = tokens.color.borderDefault;
+    });
+    pill.addEventListener('click', () => {
+      if (qa.subMode) {
+        enterSubModeByName(qa.subMode);
+      } else if (qa.actionId === 'toggle-debug-log') {
+        handleToggleDebugLog();
+      }
+    });
+    quickActionBar.appendChild(pill);
+  }
+
   card.appendChild(subModeHeader);
+  card.appendChild(quickActionBar);
   card.appendChild(input);
   card.appendChild(results);
   backdrop.appendChild(card);
 
   let selectedIndex = 0;
   let currentCommands: PaletteCommand[] = SETUP_COMMANDS.slice(0, 10);
-  let mode: 'commands' | 'flow-search' = 'commands';
+  let mode: 'commands' | 'flow-search' | 'profile-search' | 'permset-search' | 'apex-class-search' | 'apex-trigger-search' | 'soql-query' = 'commands';
   let flowCommands: PaletteCommand[] = [];
+  let profileCommands: PaletteCommand[] = [];
+  let permSetCommands: PaletteCommand[] = [];
+  let apexClassCommands: PaletteCommand[] = [];
+  let apexTriggerCommands: PaletteCommand[] = [];
+  let soqlResultCommands: PaletteCommand[] = [];
+  let soqlExecuted = false;
 
-  function renderMessage(text: string, color = '#9ca3af') {
+  function renderMessage(text: string, color: string = tokens.color.textMuted) {
     results.textContent = '';
     const div = document.createElement('div');
-    div.setAttribute('style', `padding: 20px; text-align: center; color: ${color};`);
+    div.setAttribute('style', `padding: ${tokens.space['2xl']}; text-align: center; color: ${color};`);
     div.textContent = text;
     results.appendChild(div);
   }
@@ -153,25 +334,25 @@ function createPaletteUI() {
       row.className = 'sfboost-palette-item';
       row.dataset.index = String(i);
       row.setAttribute('style', `
-        padding: 10px 20px; cursor: pointer;
-        display: flex; align-items: center; gap: 10px;
-        background: ${i === selectedIndex ? '#f0f4ff' : 'transparent'};
-        transition: background 0.1s;
+        padding: ${tokens.space.lg} ${tokens.space['2xl']}; cursor: pointer;
+        display: flex; align-items: center; gap: ${tokens.space.lg};
+        background: ${i === selectedIndex ? tokens.color.surfaceSelected : 'transparent'};
+        transition: background ${tokens.transition.fast};
       `);
 
       const icon = document.createElement('span');
-      icon.setAttribute('style', 'font-size: 16px; width: 24px; text-align: center;');
+      icon.setAttribute('style', `font-size: ${tokens.font.size.lg}; width: 24px; text-align: center;`);
       icon.textContent = cmd.icon ?? '>';
 
       const info = document.createElement('div');
       info.setAttribute('style', 'flex: 1; min-width: 0;');
 
       const label = document.createElement('div');
-      label.setAttribute('style', 'font-size: 14px; font-weight: 500; color: #1a1a2e;');
+      label.setAttribute('style', `font-size: ${tokens.font.size.md}; font-weight: ${tokens.font.weight.medium}; color: ${tokens.color.textPrimary};`);
       label.textContent = cmd.label;
 
       const cat = document.createElement('div');
-      cat.setAttribute('style', 'font-size: 11px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
+      cat.setAttribute('style', `font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;`);
       cat.textContent = cmd.category;
 
       info.append(label, cat);
@@ -193,6 +374,7 @@ function createPaletteUI() {
     input.value = '';
     input.placeholder = 'Type flow name...';
     selectedIndex = 0;
+    quickActionBar.style.display = 'none';
 
     subModeHeader.style.display = 'flex';
     subModeHeader.textContent = '';
@@ -201,14 +383,14 @@ function createPaletteUI() {
     const title = document.createElement('span');
     title.textContent = '\u{26A1} Find Flow';
     const hint = document.createElement('span');
-    hint.setAttribute('style', 'margin-left: auto; font-size: 11px; color: #9ca3af;');
+    hint.setAttribute('style', `margin-left: auto; font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted};`);
     hint.textContent = 'Esc to go back';
     subModeHeader.append(back, title, hint);
 
     renderMessage('Loading flows...');
 
     if (!currentCtx) {
-      renderMessage('No Salesforce context available', '#ef4444');
+      renderMessage('No Salesforce context available', tokens.color.error);
       return;
     }
 
@@ -222,13 +404,274 @@ function createPaletteUI() {
       flowCommands = flowsToCommands(records);
       renderResults(flowCommands.slice(0, 15));
     } catch (e: any) {
-      renderMessage(`Failed to load flows: ${e?.message ?? 'Unknown error'}`, '#ef4444');
+      renderMessage(`Failed to load flows: ${e?.message ?? 'Unknown error'}`, tokens.color.error);
     }
+  }
+
+  async function enterProfileSearch() {
+    mode = 'profile-search';
+    input.value = '';
+    input.placeholder = 'Type profile name...';
+    selectedIndex = 0;
+    quickActionBar.style.display = 'none';
+
+    subModeHeader.style.display = 'flex';
+    subModeHeader.textContent = '';
+    const back = document.createElement('span');
+    back.textContent = '\u2190';
+    const title = document.createElement('span');
+    title.textContent = '\u{1F511} Find Profile';
+    const hint = document.createElement('span');
+    hint.setAttribute('style', `margin-left: auto; font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted};`);
+    hint.textContent = 'Esc to go back';
+    subModeHeader.append(back, title, hint);
+
+    renderMessage('Loading profiles...');
+
+    if (!currentCtx) {
+      renderMessage('No Salesforce context available', tokens.color.error);
+      return;
+    }
+
+    try {
+      const response = await sendMessage('executeSOQLAll', {
+        instanceUrl: currentCtx.pageContext.instanceUrl,
+        query: `SELECT Id, Name, UserType, Description FROM Profile ORDER BY Name`,
+      });
+
+      const records = (response?.records ?? []) as ProfileRecord[];
+      profileCommands = profilesToCommands(records);
+      renderResults(profileCommands.slice(0, 15));
+    } catch (e: any) {
+      renderMessage(`Failed to load profiles: ${e?.message ?? 'Unknown error'}`, tokens.color.error);
+    }
+  }
+
+  async function enterPermSetSearch() {
+    mode = 'permset-search';
+    input.value = '';
+    input.placeholder = 'Type permission set name...';
+    selectedIndex = 0;
+    quickActionBar.style.display = 'none';
+
+    subModeHeader.style.display = 'flex';
+    subModeHeader.textContent = '';
+    const back = document.createElement('span');
+    back.textContent = '\u2190';
+    const title = document.createElement('span');
+    title.textContent = '\u{1F6E1} Find Permission Set';
+    const hint = document.createElement('span');
+    hint.setAttribute('style', `margin-left: auto; font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted};`);
+    hint.textContent = 'Esc to go back';
+    subModeHeader.append(back, title, hint);
+
+    renderMessage('Loading permission sets...');
+
+    if (!currentCtx) {
+      renderMessage('No Salesforce context available', tokens.color.error);
+      return;
+    }
+
+    try {
+      const response = await sendMessage('executeSOQLAll', {
+        instanceUrl: currentCtx.pageContext.instanceUrl,
+        query: `SELECT Id, Name, Label, Description, IsCustom, NamespacePrefix FROM PermissionSet WHERE IsOwnedByProfile = false ORDER BY Label`,
+      });
+
+      const records = (response?.records ?? []) as PermSetRecord[];
+      permSetCommands = permSetsToCommands(records);
+      renderResults(permSetCommands.slice(0, 15));
+    } catch (e: any) {
+      renderMessage(`Failed to load permission sets: ${e?.message ?? 'Unknown error'}`, tokens.color.error);
+    }
+  }
+
+  async function enterApexClassSearch() {
+    mode = 'apex-class-search';
+    input.value = '';
+    input.placeholder = 'Type class name...';
+    selectedIndex = 0;
+    quickActionBar.style.display = 'none';
+
+    subModeHeader.style.display = 'flex';
+    subModeHeader.textContent = '';
+    const back = document.createElement('span');
+    back.textContent = '\u2190';
+    const title = document.createElement('span');
+    title.textContent = '\u{1F4BB} Find Apex Class';
+    const hint = document.createElement('span');
+    hint.setAttribute('style', `margin-left: auto; font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted};`);
+    hint.textContent = 'Esc to go back';
+    subModeHeader.append(back, title, hint);
+
+    renderMessage('Loading Apex classes...');
+
+    if (!currentCtx) {
+      renderMessage('No Salesforce context available', tokens.color.error);
+      return;
+    }
+
+    try {
+      const response = await sendMessage('executeToolingQuery', {
+        instanceUrl: currentCtx.pageContext.instanceUrl,
+        query: `SELECT Id, Name, ApiVersion, Status, NamespacePrefix, LengthWithoutComments FROM ApexClass ORDER BY Name`,
+      });
+      const records = (response?.records ?? []) as ApexClassRecord[];
+      apexClassCommands = apexClassesToCommands(records);
+      renderResults(apexClassCommands.slice(0, 15));
+    } catch (e: any) {
+      renderMessage(`Failed to load Apex classes: ${e?.message ?? 'Unknown error'}`, tokens.color.error);
+    }
+  }
+
+  async function enterApexTriggerSearch() {
+    mode = 'apex-trigger-search';
+    input.value = '';
+    input.placeholder = 'Type trigger name...';
+    selectedIndex = 0;
+    quickActionBar.style.display = 'none';
+
+    subModeHeader.style.display = 'flex';
+    subModeHeader.textContent = '';
+    const back = document.createElement('span');
+    back.textContent = '\u2190';
+    const title = document.createElement('span');
+    title.textContent = '\u{2699} Find Apex Trigger';
+    const hint = document.createElement('span');
+    hint.setAttribute('style', `margin-left: auto; font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted};`);
+    hint.textContent = 'Esc to go back';
+    subModeHeader.append(back, title, hint);
+
+    renderMessage('Loading Apex triggers...');
+
+    if (!currentCtx) {
+      renderMessage('No Salesforce context available', tokens.color.error);
+      return;
+    }
+
+    try {
+      const response = await sendMessage('executeToolingQuery', {
+        instanceUrl: currentCtx.pageContext.instanceUrl,
+        query: `SELECT Id, Name, ApiVersion, Status, NamespacePrefix, TableEnumOrId FROM ApexTrigger ORDER BY Name`,
+      });
+      const records = (response?.records ?? []) as ApexTriggerRecord[];
+      apexTriggerCommands = apexTriggersToCommands(records);
+      renderResults(apexTriggerCommands.slice(0, 15));
+    } catch (e: any) {
+      renderMessage(`Failed to load Apex triggers: ${e?.message ?? 'Unknown error'}`, tokens.color.error);
+    }
+  }
+
+  function enterSoqlQuery() {
+    mode = 'soql-query';
+    input.value = '';
+    input.placeholder = 'Type a SOQL query and press Enter...';
+    selectedIndex = 0;
+    soqlResultCommands = [];
+    soqlExecuted = false;
+    quickActionBar.style.display = 'none';
+
+    subModeHeader.style.display = 'flex';
+    subModeHeader.textContent = '';
+    const back = document.createElement('span');
+    back.textContent = '\u2190';
+    const title = document.createElement('span');
+    title.textContent = '\u{1F4C4} Quick SOQL';
+    const hint = document.createElement('span');
+    hint.setAttribute('style', `margin-left: auto; font-size: ${tokens.font.size.sm}; color: ${tokens.color.textMuted};`);
+    hint.textContent = 'Enter to execute \u00b7 Esc to go back';
+    subModeHeader.append(back, title, hint);
+
+    renderMessage('Type a SOQL query and press Enter to execute');
+  }
+
+  async function executeSoqlQuery() {
+    const query = input.value.trim();
+    if (!query) return;
+
+    if (!currentCtx) {
+      renderMessage('No Salesforce context available', tokens.color.error);
+      return;
+    }
+
+    renderMessage('Executing query...');
+
+    try {
+      const response = await sendMessage('executeSOQL', {
+        instanceUrl: currentCtx.pageContext.instanceUrl,
+        query,
+      });
+      const records = response?.records ?? [];
+      const totalSize = response?.totalSize ?? records.length;
+      soqlResultCommands = soqlRecordsToCommands(records);
+      soqlExecuted = true;
+
+      if (records.length === 0) {
+        renderMessage('Query returned 0 records');
+      } else {
+        const hintEl = subModeHeader.querySelector('span:last-child') as HTMLElement | null;
+        if (hintEl) hintEl.textContent = `${totalSize} record${totalSize !== 1 ? 's' : ''} \u00b7 Click to copy ID`;
+        renderResults(soqlResultCommands);
+      }
+    } catch (e: any) {
+      soqlExecuted = false;
+      renderMessage(`Query failed: ${e?.message ?? 'Unknown error'}`, tokens.color.error);
+    }
+  }
+
+  async function handleToggleDebugLog() {
+    if (!currentCtx) {
+      showToast('No Salesforce context available');
+      return;
+    }
+
+    const paletteOpen = !!document.getElementById(PALETTE_ID);
+    if (paletteOpen) renderMessage('Toggling debug log...');
+
+    try {
+      const result = await sendMessage('toggleDebugLog', {
+        instanceUrl: currentCtx.pageContext.instanceUrl,
+      });
+
+      if (paletteOpen) closePalette();
+
+      if (result.active) {
+        const expiresIn = result.expirationDate
+          ? ` (expires ${new Date(result.expirationDate).toLocaleTimeString()})`
+          : '';
+        showToast(`Debug logging enabled${expiresIn}`);
+      } else {
+        showToast('Debug logging disabled');
+      }
+    } catch (e: any) {
+      if (paletteOpen) closePalette();
+      showToast(`Debug log toggle failed: ${e?.message ?? 'Unknown error'}`);
+    }
+  }
+
+  function enterSubModeByName(subModeName: string) {
+    switch (subModeName) {
+      case 'flow-search': enterFlowSearch(); break;
+      case 'profile-search': enterProfileSearch(); break;
+      case 'permset-search': enterPermSetSearch(); break;
+      case 'apex-class-search': enterApexClassSearch(); break;
+      case 'apex-trigger-search': enterApexTriggerSearch(); break;
+      case 'soql-query': enterSoqlQuery(); break;
+      default: return;
+    }
+    input.focus();
   }
 
   function exitSubMode() {
     mode = 'commands';
     flowCommands = [];
+    profileCommands = [];
+    permSetCommands = [];
+    apexClassCommands = [];
+    apexTriggerCommands = [];
+    soqlResultCommands = [];
+    soqlExecuted = false;
+    quickActionBar.style.display = 'flex';
     input.value = '';
     input.placeholder = 'Search Setup pages, actions...';
     selectedIndex = 0;
@@ -238,9 +681,12 @@ function createPaletteUI() {
   }
 
   function executeCommand(cmd: PaletteCommand) {
-    if (cmd.subMode === 'flow-search') {
-      enterFlowSearch();
-      input.focus();
+    if (cmd.id === 'toggle-debug-log') {
+      handleToggleDebugLog();
+      return;
+    }
+    if (cmd.subMode) {
+      enterSubModeByName(cmd.subMode);
       return;
     }
 
@@ -282,6 +728,51 @@ function createPaletteUI() {
       return;
     }
 
+    if (mode === 'profile-search') {
+      if (!query) {
+        renderResults(profileCommands.slice(0, 15));
+      } else {
+        renderResults(fuzzySearch(query, profileCommands, 15));
+      }
+      return;
+    }
+
+    if (mode === 'permset-search') {
+      if (!query) {
+        renderResults(permSetCommands.slice(0, 15));
+      } else {
+        renderResults(fuzzySearch(query, permSetCommands, 15));
+      }
+      return;
+    }
+
+    if (mode === 'apex-class-search') {
+      if (!query) {
+        renderResults(apexClassCommands.slice(0, 15));
+      } else {
+        renderResults(fuzzySearch(query, apexClassCommands, 15));
+      }
+      return;
+    }
+
+    if (mode === 'apex-trigger-search') {
+      if (!query) {
+        renderResults(apexTriggerCommands.slice(0, 15));
+      } else {
+        renderResults(fuzzySearch(query, apexTriggerCommands, 15));
+      }
+      return;
+    }
+
+    if (mode === 'soql-query') {
+      if (soqlExecuted) {
+        soqlExecuted = false;
+        soqlResultCommands = [];
+        renderMessage('Edit query and press Enter to execute again');
+      }
+      return;
+    }
+
     if (!query) {
       renderResults(SETUP_COMMANDS.slice(0, 10));
     } else {
@@ -310,8 +801,23 @@ function createPaletteUI() {
       renderResults(currentCommands);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const cmd = currentCommands[selectedIndex];
-      if (cmd) executeCommand(cmd);
+      if (mode === 'soql-query' && !soqlExecuted) {
+        executeSoqlQuery();
+      } else {
+        const cmd = currentCommands[selectedIndex];
+        if (cmd) executeCommand(cmd);
+      }
+    } else if (mode === 'commands' && input.value === '' && /^[1-7]$/.test(e.key)) {
+      const index = parseInt(e.key, 10) - 1;
+      const qa = quickActions[index];
+      if (qa) {
+        e.preventDefault();
+        if (qa.subMode) {
+          enterSubModeByName(qa.subMode);
+        } else if (qa.actionId === 'toggle-debug-log') {
+          handleToggleDebugLog();
+        }
+      }
     }
   });
 

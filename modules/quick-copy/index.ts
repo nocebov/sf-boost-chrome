@@ -1,6 +1,7 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import { showToast } from '../../lib/toast';
+import { tokens } from '../../lib/design-tokens';
 
 const COPY_BTN_CLASS = 'sfboost-copy-btn';
 let currentCtx: ModuleContext | null = null;
@@ -34,25 +35,25 @@ function createCopyButton(text: string, tooltip: string): HTMLButtonElement {
     display: inline-flex; align-items: center; justify-content: center;
     width: 24px; height: 24px;
     background: transparent;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
+    border: 1px solid ${tokens.color.borderMuted};
+    border-radius: ${tokens.radius.sm};
     cursor: pointer;
-    color: #6b7280;
-    margin-left: 6px;
+    color: ${tokens.color.textTertiary};
+    margin-left: ${tokens.space.sm};
     vertical-align: middle;
-    transition: all 0.15s;
+    transition: all ${tokens.transition.normal};
     padding: 0;
   `);
 
   btn.addEventListener('mouseenter', () => {
-    btn.style.background = '#e8f0fe';
-    btn.style.borderColor = '#0176d3';
-    btn.style.color = '#0176d3';
+    btn.style.background = tokens.color.primaryLight;
+    btn.style.borderColor = tokens.color.primary;
+    btn.style.color = tokens.color.primary;
   });
   btn.addEventListener('mouseleave', () => {
     btn.style.background = 'transparent';
-    btn.style.borderColor = '#d1d5db';
-    btn.style.color = '#6b7280';
+    btn.style.borderColor = tokens.color.borderMuted;
+    btn.style.color = tokens.color.textTertiary;
   });
 
   btn.addEventListener('click', async (e) => {
@@ -69,6 +70,45 @@ function createCopyButton(text: string, tooltip: string): HTMLButtonElement {
   return btn;
 }
 
+const HEADER_SELECTORS = [
+  // LWC highlights panel
+  'records-lwc-highlights-panel .slds-page-header__title',
+  // Highlights details (older Aura layout)
+  'records-highlights-details .slds-page-header__title',
+  // Entity name title (classic)
+  '.entityNameTitle',
+  // Generic page header title
+  'h1.slds-page-header__title',
+  // Formatted name inside highlights (Contact, Lead, PersonAccount)
+  'records-lwc-highlights-panel lightning-formatted-name',
+  'records-highlights-details lightning-formatted-name',
+  // Entity label
+  'records-entity-label',
+  // Force highlights panel (Aura wrapper)
+  '[data-aura-class="forceHighlightsPanel"] .slds-page-header__title',
+  // Generic heading in highlights
+  'records-lwc-highlights-panel h1',
+  'records-highlights-details h1',
+  // Name-title wrapper
+  '.slds-page-header__name-title h1',
+  // Standalone formatted name (last resort)
+  'lightning-formatted-name',
+];
+
+function findRecordHeader(): Element | null {
+  // Try standard selectors
+  for (const sel of HEADER_SELECTORS) {
+    const el = document.querySelector(sel);
+    if (el && (el as HTMLElement).offsetParent !== null) return el;
+  }
+  // Fallback: any visible element from the full selector list (including hidden ones above)
+  for (const sel of HEADER_SELECTORS) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
 /** Try to inject the copy button. Returns true if the header was found. */
 function injectRecordIdCopyButton(): boolean {
   if (!currentCtx) return false;
@@ -78,16 +118,7 @@ function injectRecordIdCopyButton(): boolean {
   // Already injected?
   if (document.querySelector(`.${COPY_BTN_CLASS}[data-sfboost-record-id]`)) return true;
 
-  // Find the record header
-  const header = document.querySelector(
-    'records-lwc-highlights-panel .slds-page-header__title, ' +
-    'records-highlights-details .slds-page-header__title, ' +
-    '.entityNameTitle, ' +
-    'h1.slds-page-header__title, ' +
-    'lightning-formatted-name, ' +
-    'records-entity-label'
-  );
-
+  const header = findRecordHeader();
   if (!header) return false;
 
   const btn = createCopyButton(recordId, `Copy Record ID: ${recordId}`);
@@ -105,7 +136,7 @@ function cancelRetry() {
 }
 
 /** Retry injection until header is found or attempts exhausted. */
-function scheduleInject(attempts = 8, delay = 400) {
+function scheduleInject(attempts = 12, delay = 350) {
   cancelRetry();
   // Try immediately first
   if (injectRecordIdCopyButton()) return;
@@ -115,6 +146,108 @@ function scheduleInject(attempts = 8, delay = 400) {
     retryTimer = setTimeout(tryAgain, delay);
   };
   retryTimer = setTimeout(tryAgain, delay);
+}
+
+// --- List view hover copy ---
+
+const LIST_COPY_CLASS = 'sfboost-list-copy';
+let listDelegate: ((e: MouseEvent) => void) | null = null;
+
+function extractRecordIdFromRow(row: HTMLTableRowElement): string | null {
+  // Try data-row-key-value attribute (Lightning list views)
+  const key = row.getAttribute('data-row-key-value');
+  if (key && /^[a-zA-Z0-9]{15,18}$/.test(key)) return key;
+
+  // Try links inside the row
+  const links = row.querySelectorAll<HTMLAnchorElement>('a[href*="/lightning/r/"]');
+  for (const link of links) {
+    const m = link.href.match(/\/lightning\/r\/\w+\/(\w{15,18})\//);
+    if (m?.[1]) return m[1];
+  }
+
+  return null;
+}
+
+function injectListViewCopy(): void {
+  removeListViewCopy();
+
+  const style = document.createElement('style');
+  style.className = LIST_COPY_CLASS;
+  style.textContent = `
+    tr[data-row-key-value] .${LIST_COPY_CLASS} { opacity: 0; transition: opacity 0.15s; }
+    tr[data-row-key-value]:hover .${LIST_COPY_CLASS} { opacity: 1; }
+  `;
+  document.head.appendChild(style);
+
+  listDelegate = (e: MouseEvent) => {
+    const btn = (e.target as Element)?.closest(`.${LIST_COPY_CLASS}`) as HTMLElement | null;
+    if (!btn) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const id = btn.getAttribute('data-sfboost-rid');
+    if (id) {
+      navigator.clipboard.writeText(id).then(() => showToast(`Copied: ${id}`))
+        .catch(() => showToast('Failed to copy'));
+    }
+  };
+  document.addEventListener('click', listDelegate, true);
+
+  const table = document.querySelector<HTMLTableElement>('table[role="grid"]');
+  if (!table) return;
+
+  const rows = table.querySelectorAll<HTMLTableRowElement>('tr[data-row-key-value]');
+  for (const row of rows) {
+    if (row.querySelector(`.${LIST_COPY_CLASS}`)) continue;
+    const recordId = extractRecordIdFromRow(row);
+    if (!recordId) continue;
+
+    const firstCell = row.querySelector('td');
+    if (!firstCell) continue;
+
+    const btn = document.createElement('button');
+    btn.className = `${LIST_COPY_CLASS}`;
+    btn.setAttribute('data-sfboost-rid', recordId);
+    btn.title = recordId;
+    btn.textContent = 'Copy ID';
+    btn.setAttribute('style', `
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 22px; padding: 0 ${tokens.space.md};
+      background: ${tokens.color.primary}; color: ${tokens.color.textOnPrimary};
+      border: none; border-radius: ${tokens.radius.sm};
+      font-size: ${tokens.font.size.sm}; font-weight: ${tokens.font.weight.semibold};
+      cursor: pointer; white-space: nowrap;
+      margin-right: ${tokens.space.sm}; flex-shrink: 0;
+      transition: background ${tokens.transition.normal};
+    `);
+    btn.addEventListener('mouseenter', () => { btn.style.background = tokens.color.primaryHover; });
+    btn.addEventListener('mouseleave', () => { btn.style.background = tokens.color.primary; });
+    firstCell.insertBefore(btn, firstCell.firstChild);
+  }
+}
+
+function removeListViewCopy(): void {
+  document.querySelectorAll(`style.${LIST_COPY_CLASS}`).forEach(el => el.remove());
+  document.querySelectorAll(`.${LIST_COPY_CLASS}`).forEach(el => el.remove());
+  if (listDelegate) {
+    document.removeEventListener('click', listDelegate, true);
+    listDelegate = null;
+  }
+}
+
+let listRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleListInject(attempts = 8, delay = 500): void {
+  if (listRetryTimer) { clearTimeout(listRetryTimer); listRetryTimer = null; }
+  const table = document.querySelector('table[role="grid"] tr[data-row-key-value]');
+  if (table) { injectListViewCopy(); return; }
+  let left = attempts - 1;
+  const tryAgain = () => {
+    const found = document.querySelector('table[role="grid"] tr[data-row-key-value]');
+    if (found) { injectListViewCopy(); listRetryTimer = null; return; }
+    if (left-- <= 0) { listRetryTimer = null; return; }
+    listRetryTimer = setTimeout(tryAgain, delay);
+  };
+  listRetryTimer = setTimeout(tryAgain, delay);
 }
 
 const quickCopy: SFBoostModule = {
@@ -127,6 +260,8 @@ const quickCopy: SFBoostModule = {
     currentCtx = ctx;
     if (ctx.pageContext.pageType === 'record') {
       scheduleInject();
+    } else if (ctx.pageContext.pageType === 'list') {
+      scheduleListInject();
     }
   },
 
@@ -135,8 +270,12 @@ const quickCopy: SFBoostModule = {
     currentCtx = ctx;
     cancelRetry();
     removeCopyButtons();
+    removeListViewCopy();
+    if (listRetryTimer) { clearTimeout(listRetryTimer); listRetryTimer = null; }
     if (ctx.pageContext.pageType === 'record') {
       scheduleInject();
+    } else if (ctx.pageContext.pageType === 'list') {
+      scheduleListInject();
     }
   },
 
@@ -144,6 +283,8 @@ const quickCopy: SFBoostModule = {
     if (window.top !== window.self) return;
     cancelRetry();
     removeCopyButtons();
+    removeListViewCopy();
+    if (listRetryTimer) { clearTimeout(listRetryTimer); listRetryTimer = null; }
   },
 };
 

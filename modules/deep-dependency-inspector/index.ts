@@ -4,6 +4,7 @@ import { sendMessage } from '../../lib/messaging';
 import { createModal, createSpinner, createButton } from '../../lib/ui-helpers';
 import { showToast } from '../../lib/toast';
 import { assertSalesforceId, isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
+import { tokens } from '../../lib/design-tokens';
 
 const BTN_ID = 'sfboost-deep-scan-btn';
 const MODAL_ID = 'sfboost-dependency-modal';
@@ -118,7 +119,7 @@ function injectButton(): boolean {
 
   const btn = createButton('Deep Scan', { small: false });
   btn.id = BTN_ID;
-  btn.style.marginLeft = '12px';
+  btn.style.marginLeft = tokens.space.lg;
   btn.style.verticalAlign = 'middle';
 
   btn.addEventListener('click', () => runDeepScan());
@@ -184,14 +185,14 @@ async function runDeepScan(): Promise<void> {
   // Header
   const headerDiv = document.createElement('div');
   headerDiv.setAttribute('style', `
-    padding: 16px 20px;
-    border-bottom: 1px solid #e5e7eb;
+    padding: ${tokens.space.xl} ${tokens.space['2xl']};
+    border-bottom: 1px solid ${tokens.color.borderDefault};
     display: flex;
     align-items: center;
     justify-content: space-between;
   `);
   const title = document.createElement('h2');
-  title.setAttribute('style', 'margin: 0; font-size: 16px; font-weight: 700; color: #181818;');
+  title.setAttribute('style', `margin: 0; font-size: ${tokens.font.size.lg}; font-weight: ${tokens.font.weight.bold}; color: ${tokens.color.textPrimary};`);
   title.textContent = `Dependencies: ${displayName}`;
 
   const closeBtn = document.createElement('button');
@@ -199,7 +200,7 @@ async function runDeepScan(): Promise<void> {
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.setAttribute('style', `
     border: none; background: none; font-size: 22px; cursor: pointer;
-    color: #706e6b; padding: 0 4px; line-height: 1;
+    color: ${tokens.color.textSalesforceGray}; padding: 0 ${tokens.space.xs}; line-height: 1;
   `);
   closeBtn.addEventListener('click', close);
 
@@ -208,10 +209,10 @@ async function runDeepScan(): Promise<void> {
 
   // Loading
   const loadingDiv = document.createElement('div');
-  loadingDiv.setAttribute('style', 'padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 12px;');
+  loadingDiv.setAttribute('style', `padding: 40px; display: flex; flex-direction: column; align-items: center; gap: ${tokens.space.lg};`);
   loadingDiv.appendChild(createSpinner());
   const loadingText = document.createElement('span');
-  loadingText.setAttribute('style', 'color: #706e6b; font-size: 13px;');
+  loadingText.setAttribute('style', `color: ${tokens.color.textSalesforceGray}; font-size: ${tokens.font.size.base};`);
   loadingText.textContent = 'Scanning dependencies...';
   loadingDiv.appendChild(loadingText);
   card.appendChild(loadingDiv);
@@ -230,7 +231,7 @@ async function runDeepScan(): Promise<void> {
   } catch (err: any) {
     loadingDiv.remove();
     const errorDiv = document.createElement('div');
-    errorDiv.setAttribute('style', 'padding: 20px; color: #ef4444; font-size: 13px;');
+    errorDiv.setAttribute('style', `padding: ${tokens.space['2xl']}; color: ${tokens.color.error}; font-size: ${tokens.font.size.base};`);
     errorDiv.textContent = `Error: ${err.message}`;
     card.appendChild(errorDiv);
   }
@@ -243,11 +244,11 @@ function renderResults(
   close: () => void
 ): void {
   const body = document.createElement('div');
-  body.setAttribute('style', 'padding: 12px 20px; flex: 1; min-height: 0; overflow-y: auto;');
+  body.setAttribute('style', `padding: ${tokens.space.lg} ${tokens.space['2xl']}; flex: 1; min-height: 0; overflow-y: auto;`);
 
   if (records.length === 0) {
     const empty = document.createElement('div');
-    empty.setAttribute('style', 'padding: 24px; text-align: center; color: #706e6b; font-size: 13px;');
+    empty.setAttribute('style', `padding: 24px; text-align: center; color: ${tokens.color.textSalesforceGray}; font-size: ${tokens.font.size.base};`);
     empty.textContent = 'No dependencies found. This component is not referenced anywhere.';
     body.appendChild(empty);
     card.appendChild(body);
@@ -256,7 +257,7 @@ function renderResults(
 
   // Summary
   const summary = document.createElement('div');
-  summary.setAttribute('style', 'margin-bottom: 12px; font-size: 13px; color: #706e6b;');
+  summary.setAttribute('style', `margin-bottom: ${tokens.space.lg}; font-size: ${tokens.font.size.base}; color: ${tokens.color.textSalesforceGray};`);
   summary.textContent = `Found ${records.length} reference(s)`;
   body.appendChild(summary);
 
@@ -283,39 +284,39 @@ function renderResults(
 
   for (const [type, deps] of Object.entries(grouped).sort((a, b) => b[1].length - a[1].length)) {
     const section = document.createElement('div');
-    section.setAttribute('style', 'margin-bottom: 8px;');
+    section.setAttribute('style', `margin-bottom: ${tokens.space.md};`);
 
     const sectionHeader = document.createElement('div');
     sectionHeader.setAttribute('style', `
-      padding: 8px 12px;
-      background: #f3f4f6;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #374151;
+      padding: ${tokens.space.md} ${tokens.space.lg};
+      background: ${tokens.color.surfaceSubtle};
+      border-radius: ${tokens.radius.md};
+      font-size: ${tokens.font.size.base};
+      font-weight: ${tokens.font.weight.semibold};
+      color: ${tokens.color.textSecondary};
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: ${tokens.space.md};
     `);
     const icon = typeIcons[type] || '\u{1F4C4}';
     sectionHeader.textContent = `${icon} ${type} (${deps.length})`;
 
     const itemList = document.createElement('div');
-    itemList.setAttribute('style', 'padding: 4px 0 4px 24px;');
+    itemList.setAttribute('style', `padding: ${tokens.space.xs} 0 ${tokens.space.xs} 24px;`);
 
     for (const dep of deps) {
       const item = document.createElement('div');
       item.setAttribute('style', `
-        padding: 6px 8px;
-        font-size: 13px;
-        color: #0176d3;
+        padding: ${tokens.space.sm} ${tokens.space.md};
+        font-size: ${tokens.font.size.base};
+        color: ${tokens.color.primary};
         cursor: pointer;
-        border-radius: 4px;
-        transition: background 0.1s;
+        border-radius: ${tokens.radius.sm};
+        transition: background ${tokens.transition.fast};
       `);
       item.textContent = dep.MetadataComponentName;
-      item.addEventListener('mouseenter', () => { item.style.background = '#f0f7ff'; });
+      item.addEventListener('mouseenter', () => { item.style.background = tokens.color.surfaceSelected; });
       item.addEventListener('mouseleave', () => { item.style.background = ''; });
       item.addEventListener('click', () => {
         navigator.clipboard.writeText(dep.MetadataComponentName);
@@ -337,7 +338,7 @@ function renderResults(
 
   // Copy all button
   const copyAllBtn = createButton('Copy All', { primary: false, small: true });
-  copyAllBtn.style.marginTop = '12px';
+  copyAllBtn.style.marginTop = tokens.space.lg;
   copyAllBtn.addEventListener('click', () => {
     const text = records
       .map(r => `${r.MetadataComponentType}: ${r.MetadataComponentName}`)

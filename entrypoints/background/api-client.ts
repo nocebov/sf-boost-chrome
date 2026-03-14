@@ -176,6 +176,138 @@ export async function executeToolingQueryAll(
   return { ...result, records: allRecords, done: true };
 }
 
+// --- Tooling API DML & Debug Log ---
+
+export async function getCurrentUserId(
+  instanceUrl: string,
+  sessionId: string,
+): Promise<string> {
+  const url = `${instanceUrl}/services/data/${API_VERSION}/`;
+  const response = await fetchWithRetry(url, { headers: authHeaders(sessionId) });
+  if (!response.ok) {
+    throw new Error(`Failed to get API info (${response.status})`);
+  }
+  const data = await response.json();
+  const identityUrl: string = data.identity;
+  const userId = identityUrl.split('/').pop();
+  if (!userId || userId.length < 15) {
+    throw new Error('Could not extract user ID from identity URL');
+  }
+  return userId;
+}
+
+export async function toolingCreate(
+  instanceUrl: string,
+  sessionId: string,
+  sobjectType: string,
+  record: Record<string, unknown>,
+): Promise<{ id: string; success: boolean }> {
+  const url = `${instanceUrl}/services/data/${API_VERSION}/tooling/sobjects/${encodeURIComponent(sobjectType)}`;
+  const response = await fetchWithRetry(url, {
+    method: 'POST',
+    headers: authHeaders(sessionId),
+    body: JSON.stringify(record),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    const msg = Array.isArray(errorBody) ? errorBody[0]?.message : errorBody?.message ?? response.statusText;
+    throw new Error(`Tooling create ${sobjectType} failed: ${msg}`);
+  }
+  return response.json();
+}
+
+export async function toolingDelete(
+  instanceUrl: string,
+  sessionId: string,
+  sobjectType: string,
+  recordId: string,
+): Promise<void> {
+  const url = `${instanceUrl}/services/data/${API_VERSION}/tooling/sobjects/${encodeURIComponent(sobjectType)}/${encodeURIComponent(recordId)}`;
+  const response = await fetchWithRetry(url, {
+    method: 'DELETE',
+    headers: authHeaders(sessionId),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    const msg = Array.isArray(errorBody) ? errorBody[0]?.message : errorBody?.message ?? response.statusText;
+    throw new Error(`Tooling delete ${sobjectType}/${recordId} failed: ${msg}`);
+  }
+}
+
+export async function toggleDebugLog(
+  instanceUrl: string,
+  sessionId: string,
+): Promise<{ active: boolean; expirationDate?: string }> {
+  const userId = await getCurrentUserId(instanceUrl, sessionId);
+
+  // Check for existing active TraceFlag
+  const nowIso = new Date().toISOString();
+  const existingResult = await executeToolingQuery(
+    instanceUrl, sessionId,
+    `SELECT Id, ExpirationDate FROM TraceFlag WHERE TracedEntityId = '${userId}' AND LogType = 'DEVELOPER_LOG' AND ExpirationDate > ${nowIso}`,
+  );
+
+  const existingFlags = existingResult?.records ?? [];
+
+  // If active TraceFlag exists, delete it
+  if (existingFlags.length > 0) {
+    await toolingDelete(instanceUrl, sessionId, 'TraceFlag', existingFlags[0].Id);
+    return { active: false };
+  }
+
+  // Find or create a DebugLevel
+  const debugLevelName = 'SFBoost_Debug';
+  let debugLevelId: string;
+
+  const dlResult = await executeToolingQuery(
+    instanceUrl, sessionId,
+    `SELECT Id FROM DebugLevel WHERE DeveloperName = '${debugLevelName}' LIMIT 1`,
+  );
+
+  if (dlResult?.records?.length > 0) {
+    debugLevelId = dlResult.records[0].Id;
+  } else {
+    try {
+      const created = await toolingCreate(instanceUrl, sessionId, 'DebugLevel', {
+        DeveloperName: debugLevelName,
+        MasterLabel: 'SF Boost Debug',
+        ApexCode: 'FINEST',
+        ApexProfiling: 'INFO',
+        Callout: 'INFO',
+        Database: 'INFO',
+        System: 'DEBUG',
+        Validation: 'INFO',
+        Visualforce: 'INFO',
+        Workflow: 'INFO',
+      });
+      debugLevelId = created.id;
+    } catch {
+      // Might be a duplicate — try to find it again
+      const fallback = await executeToolingQuery(
+        instanceUrl, sessionId,
+        `SELECT Id FROM DebugLevel WHERE DeveloperName = '${debugLevelName}' LIMIT 1`,
+      );
+      if (fallback?.records?.length > 0) {
+        debugLevelId = fallback.records[0].Id;
+      } else {
+        throw new Error('Failed to create or find DebugLevel');
+      }
+    }
+  }
+
+  // Create TraceFlag with 30-minute expiration
+  const expirationDate = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  await toolingCreate(instanceUrl, sessionId, 'TraceFlag', {
+    TracedEntityId: userId,
+    DebugLevelId: debugLevelId,
+    LogType: 'DEVELOPER_LOG',
+    StartDate: nowIso,
+    ExpirationDate: expirationDate,
+  });
+
+  return { active: true, expirationDate };
+}
+
 // --- Permission Set creation with partial failure tracking ---
 
 export interface PermissionFailure {

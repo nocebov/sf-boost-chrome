@@ -1,9 +1,12 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
+import { tokens } from '../../lib/design-tokens';
 
 const DATA_ATTR = 'data-sfboost-cs-managed';
 const FILTER_CLASS = 'sfboost-cs-filter';
 const COUNTER_CLASS = 'sfboost-cs-counter';
+const HIGHLIGHT_CLASS = 'sfboost-cs-highlight';
+const NO_MATCH_CLASS = 'sfboost-cs-no-match';
 
 let observer: MutationObserver | null = null;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
@@ -39,7 +42,7 @@ function createSearchIcon(): SVGSVGElement {
   svg.setAttribute('height', '18');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', '#888');
+  svg.setAttribute('stroke', tokens.color.textSalesforceGray);
   svg.setAttribute('stroke-width', '2');
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
@@ -67,18 +70,18 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   container.setAttribute('style', `
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 8px 16px;
-    margin: 12px 0;
-    background: #ffffff;
-    border: 1px solid #e2e2e2;
-    border-radius: 24px;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    transition: all 0.2s ease;
+    gap: ${tokens.space.lg};
+    padding: ${tokens.space.md} ${tokens.space.xl};
+    margin: ${tokens.space.lg} 0;
+    background: ${tokens.color.surfaceBase};
+    border: 1px solid ${tokens.color.borderDefault};
+    border-radius: ${tokens.radius.xl};
+    font-family: ${tokens.font.family.sans};
+    box-shadow: ${tokens.shadow.xs};
+    transition: all ${tokens.transition.slow} ease;
   `);
-  container.addEventListener('mouseenter', () => { container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; container.style.borderColor = '#d0d0d0'; });
-  container.addEventListener('mouseleave', () => { container.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; container.style.borderColor = '#e2e2e2'; });
+  container.addEventListener('mouseenter', () => { container.style.boxShadow = tokens.shadow.md; container.style.borderColor = tokens.color.borderMuted; });
+  container.addEventListener('mouseleave', () => { container.style.boxShadow = tokens.shadow.xs; container.style.borderColor = tokens.color.borderDefault; });
 
   container.appendChild(createSearchIcon());
 
@@ -88,26 +91,26 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   input.setAttribute('style', `
     flex: 1;
     border: none;
-    font-size: 14px;
+    font-size: ${tokens.font.size.md};
     outline: none;
     background: transparent;
-    color: #333;
-    padding: 6px 0;
+    color: ${tokens.color.textPrimary};
+    padding: ${tokens.space.sm} 0;
     min-width: 200px;
   `);
 
   // Component type counter (placed before count for visual hierarchy)
   const typeCounter = document.createElement('span');
   typeCounter.setAttribute('style', `
-    font-size: 12px;
-    font-weight: 500;
-    color: #4f46e5;
+    font-size: ${tokens.font.size.sm};
+    font-weight: ${tokens.font.weight.medium};
+    color: ${tokens.color.primary};
     white-space: nowrap;
     user-select: none;
-    background: #eef2ff;
-    padding: 4px 10px;
-    border-radius: 12px;
-    border: 1px solid #e0e7ff;
+    background: ${tokens.color.primaryLight};
+    padding: ${tokens.space.xs} ${tokens.space.lg};
+    border-radius: ${tokens.radius.xl};
+    border: 1px solid ${tokens.color.primaryBorder};
   `);
   updateTypeCounter(table, typeCounter);
 
@@ -115,14 +118,14 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   const count = document.createElement('span');
   count.className = COUNTER_CLASS;
   count.setAttribute('style', `
-    font-size: 12px;
-    font-weight: 600;
-    color: #555;
+    font-size: ${tokens.font.size.sm};
+    font-weight: ${tokens.font.weight.semibold};
+    color: ${tokens.color.textSecondary};
     white-space: nowrap;
     user-select: none;
-    background: #f3f4f6;
-    padding: 4px 10px;
-    border-radius: 12px;
+    background: ${tokens.color.surfaceSubtle};
+    padding: ${tokens.space.xs} ${tokens.space.lg};
+    border-radius: ${tokens.radius.xl};
   `);
   updateCount(table, count, '');
 
@@ -143,16 +146,16 @@ function createFilterUI(table: HTMLTableElement): HTMLDivElement {
   clearBtn.appendChild(clearSvg);
   clearBtn.title = 'Clear filter';
   clearBtn.setAttribute('style', `
-    display: none; border: none; background: #f3f4f6;
-    color: #9ca3af; cursor: pointer;
-    padding: 6px; flex-shrink: 0;
-    border-radius: 50%;
+    display: none; border: none; background: ${tokens.color.surfaceSubtle};
+    color: ${tokens.color.textMuted}; cursor: pointer;
+    padding: ${tokens.space.sm}; flex-shrink: 0;
+    border-radius: ${tokens.radius.full};
     align-items: center; justify-content: center;
-    transition: all 0.15s ease;
+    transition: all ${tokens.transition.normal} ease;
     height: 24px; width: 24px;
   `);
-  clearBtn.addEventListener('mouseenter', () => { clearBtn.style.background = '#e5e7eb'; clearBtn.style.color = '#4b5563'; });
-  clearBtn.addEventListener('mouseleave', () => { clearBtn.style.background = '#f3f4f6'; clearBtn.style.color = '#9ca3af'; });
+  clearBtn.addEventListener('mouseenter', () => { clearBtn.style.background = tokens.color.borderDefault; clearBtn.style.color = tokens.color.textSecondary; });
+  clearBtn.addEventListener('mouseleave', () => { clearBtn.style.background = tokens.color.surfaceSubtle; clearBtn.style.color = tokens.color.textMuted; });
 
   // Debounced filter
   let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -207,11 +210,86 @@ function getRowText(row: HTMLTableRowElement): string {
   return text;
 }
 
+function clearHighlights(table: HTMLTableElement): void {
+  table.querySelectorAll(`.${HIGHLIGHT_CLASS}`).forEach(mark => {
+    const parent = mark.parentNode;
+    if (parent) {
+      parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+      parent.normalize();
+    }
+  });
+}
+
+function highlightMatches(table: HTMLTableElement, terms: string[]): void {
+  if (terms.length === 0) return;
+
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
+
+  const rows = getBodyRows(table);
+  for (const row of rows) {
+    if (row.style.display === 'none') continue;
+    const cells = row.querySelectorAll('td, th');
+    for (const cell of cells) {
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+      for (const node of textNodes) {
+        const text = node.textContent || '';
+        if (!text.trim()) continue;
+        const parts = text.split(regex);
+        if (parts.length <= 1) continue;
+
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (!part) continue;
+          if (i % 2 === 1) {
+            const mark = document.createElement('mark');
+            mark.className = HIGHLIGHT_CLASS;
+            mark.style.cssText = `background:${tokens.color.surfaceHighlight};color:inherit;padding:0 1px;border-radius:${tokens.radius.xs};`;
+            mark.textContent = part;
+            frag.appendChild(mark);
+          } else {
+            frag.appendChild(document.createTextNode(part));
+          }
+        }
+        node.parentNode?.replaceChild(frag, node);
+      }
+    }
+  }
+}
+
+function showNoMatchMessage(table: HTMLTableElement): void {
+  hideNoMatchMessage(table);
+  const msg = document.createElement('tr');
+  msg.className = NO_MATCH_CLASS;
+  const cell = document.createElement('td');
+  const colCount = table.querySelector('tr')?.children.length || 1;
+  cell.setAttribute('colspan', String(colCount));
+  cell.setAttribute('style', `
+    text-align: center; padding: 24px ${tokens.space.xl}; color: ${tokens.color.textSalesforceGray};
+    font-size: ${tokens.font.size.base}; font-style: italic;
+  `);
+  cell.textContent = 'No matches found';
+  msg.appendChild(cell);
+  const tbody = table.querySelector('tbody') || table;
+  tbody.appendChild(msg);
+}
+
+function hideNoMatchMessage(table: HTMLTableElement): void {
+  table.querySelectorAll(`.${NO_MATCH_CLASS}`).forEach(el => el.remove());
+}
+
 function filterTable(table: HTMLTableElement, query: string, countEl: HTMLElement): void {
   const trimmed = query.trim().toLowerCase();
   const terms = trimmed.split(/\s+/).filter(Boolean);
   const rows = getBodyRows(table);
   let visible = 0;
+
+  clearHighlights(table);
+  hideNoMatchMessage(table);
 
   for (const row of rows) {
     if (terms.length === 0) {
@@ -225,6 +303,11 @@ function filterTable(table: HTMLTableElement, query: string, countEl: HTMLElemen
     if (match) visible++;
   }
 
+  if (terms.length > 0 && visible === 0) {
+    showNoMatchMessage(table);
+  }
+
+  highlightMatches(table, terms);
   updateCount(table, countEl, trimmed);
 }
 
@@ -348,6 +431,8 @@ function removeAllFilters(): void {
   rowTextCache = new WeakMap();
   document.querySelectorAll(`.${FILTER_CLASS}`).forEach(el => el.remove());
   document.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {
+    clearHighlights(table);
+    hideNoMatchMessage(table);
     getBodyRows(table).forEach(row => { row.style.display = ''; });
     table.removeAttribute(DATA_ATTR);
   });

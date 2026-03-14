@@ -3,18 +3,19 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import type { OrgType } from '../../lib/salesforce-urls';
 import { getOrgSettings } from '../../lib/storage';
 import { isValidCssColor } from '../../lib/salesforce-utils';
+import { tokens } from '../../lib/design-tokens';
 
 const BADGE_ID = 'sfboost-env-badge';
 let originalTitle = '';
 let currentCtx: ModuleContext | null = null;
 // Default color scheme per org type
 const ENV_COLORS: Record<OrgType, { bg: string; text: string; label: string }> = {
-  production: { bg: '#dc2626', text: '#fff', label: 'PRODUCTION' },
-  sandbox: { bg: '#16a34a', text: '#fff', label: 'SANDBOX' },
-  developer: { bg: '#2563eb', text: '#fff', label: 'DEV' },
-  scratch: { bg: '#7c3aed', text: '#fff', label: 'SCRATCH' },
-  trailhead: { bg: '#0d9488', text: '#fff', label: 'TRAILHEAD' },
-  unknown: { bg: '#6b7280', text: '#fff', label: 'UNKNOWN' },
+  production: { bg: tokens.color.envProduction, text: tokens.color.textOnPrimary, label: 'PRODUCTION' },
+  sandbox: { bg: tokens.color.envSandbox, text: tokens.color.textOnPrimary, label: 'SANDBOX' },
+  developer: { bg: tokens.color.envDeveloper, text: tokens.color.textOnPrimary, label: 'DEV' },
+  scratch: { bg: tokens.color.envScratch, text: tokens.color.textOnPrimary, label: 'SCRATCH' },
+  trailhead: { bg: tokens.color.envTrailhead, text: tokens.color.textOnPrimary, label: 'TRAILHEAD' },
+  unknown: { bg: tokens.color.envUnknown, text: tokens.color.textOnPrimary, label: 'UNKNOWN' },
 };
 
 function getTitlePrefix(orgType: OrgType, sandboxName?: string): string {
@@ -35,9 +36,19 @@ function updateExtensionBadge(text: string, color?: string): void {
   });
 }
 
+function isFlowBuilderPage(): boolean {
+  return window.location.href.includes('flowBuilder');
+}
+
 async function injectBadge(ctx: ModuleContext): Promise<void> {
   // Remove existing badge if any
   document.getElementById(BADGE_ID)?.remove();
+
+  // Hide badge on Flow Builder pages — it overlaps the canvas toolbar
+  if (isFlowBuilderPage()) {
+    updateExtensionBadge('');
+    return;
+  }
 
   const { orgType, myDomain, sandboxName } = ctx.pageContext;
   const defaults = ENV_COLORS[orgType] ?? ENV_COLORS.unknown;
@@ -63,23 +74,23 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
   badge.id = BADGE_ID;
   badge.setAttribute('style', `
     position: fixed;
-    top: 8px;
+    top: ${tokens.space.md};
     left: 80px;
-    z-index: 99999;
+    z-index: ${tokens.zIndex.badge};
     padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 700;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    border-radius: ${tokens.radius.xl};
+    font-size: ${tokens.font.size.sm};
+    font-weight: ${tokens.font.weight.bold};
+    font-family: ${tokens.font.family.sans};
     pointer-events: none;
     letter-spacing: 0.5px;
     background: ${bg};
     color: ${textColor};
-    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    box-shadow: ${tokens.shadow.sm};
     user-select: none;
     display: flex;
     align-items: center;
-    transition: opacity 0.2s ease;
+    transition: opacity ${tokens.transition.slow} ease;
   `);
 
   const labelSpan = document.createElement('span');
@@ -96,8 +107,8 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
     document.title = `${prefix} ${document.title}`;
   }
 
-  // Update extension badge icon color
-  updateExtensionBadge(label.slice(0, 4), bg);
+  // Extension icon badge intentionally disabled
+  updateExtensionBadge('', bg);
 }
 
 function removeBadge(): void {
@@ -123,6 +134,10 @@ const environmentSafeguard: SFBoostModule = {
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
     if (window.top !== window.self) return;
+    if (isFlowBuilderPage()) {
+      removeBadge();
+      return;
+    }
     // Badge persists across SPA navigation — only re-inject if needed
     if (!document.getElementById(BADGE_ID)) {
       await injectBadge(ctx);

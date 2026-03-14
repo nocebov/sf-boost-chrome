@@ -28,7 +28,13 @@ export const SETUP_COMMANDS: PaletteCommand[] = [
   { id: 'picklist-values', label: 'Picklist Value Sets', keywords: ['picklist', 'global value set'], category: 'setup', path: '/lightning/setup/Picklists/home', icon: '\u{1F4DD}' },
 
   // Automation
+  { id: 'find-profile', label: 'Find Profile', keywords: ['search profile', 'profile name', 'user profile'], category: 'action', icon: '\u{1F50E}', subMode: 'profile-search' },
+  { id: 'find-permset', label: 'Find Permission Set', keywords: ['search permission set', 'permset', 'permission set name'], category: 'action', icon: '\u{1F50E}', subMode: 'permset-search' },
   { id: 'find-flow', label: 'Find Flow', keywords: ['search flow', 'flow builder', 'flow name', 'automation'], category: 'action', icon: '\u{1F50E}', subMode: 'flow-search' },
+  { id: 'find-apex-class', label: 'Find Apex Class', keywords: ['search apex class', 'class name', 'apex code'], category: 'action', icon: '\u{1F50E}', subMode: 'apex-class-search' },
+  { id: 'find-apex-trigger', label: 'Find Apex Trigger', keywords: ['search apex trigger', 'trigger name'], category: 'action', icon: '\u{1F50E}', subMode: 'apex-trigger-search' },
+  { id: 'toggle-debug-log', label: 'Toggle Debug Log', keywords: ['debug', 'log', 'trace', 'trace flag', 'developer log'], category: 'action', icon: '\u{1F41E}' },
+  { id: 'quick-soql', label: 'Quick SOQL Query', keywords: ['soql', 'query', 'search records', 'SQL'], category: 'action', icon: '\u{1F50E}', subMode: 'soql-query' },
   { id: 'flows', label: 'Flows', keywords: ['flow builder', 'automation', 'process'], category: 'setup', path: '/lightning/setup/Flows/home', icon: '\u{26A1}' },
   { id: 'process-auto', label: 'Process Automation Settings', keywords: ['process builder', 'workflow'], category: 'setup', path: '/lightning/setup/WorkflowSettings/home', icon: '\u{2699}' },
   { id: 'approval-processes', label: 'Approval Processes', keywords: ['approval'], category: 'setup', path: '/lightning/setup/ApprovalProcesses/home', icon: '\u{2705}' },

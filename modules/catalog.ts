@@ -14,9 +14,9 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     id: 'command-palette',
     name: 'Command Palette',
     description: 'Quick navigation and tools',
-    info: 'Gives quick access to Setup pages and records. Flow Search queries Salesforce only when you explicitly switch into that mode.',
+    info: 'Quick access to Setup pages, Apex classes, triggers, flows, profiles, permission sets. Toggle Debug Log creates/deletes TraceFlags. Quick SOQL executes queries.',
     defaultEnabled: true,
-    accessLevel: 'read-only',
+    accessLevel: 'write-capable',
   },
   {
     id: 'field-inspector',

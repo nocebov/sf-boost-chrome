@@ -49,8 +49,9 @@ The `ModuleRegistry` (`modules/registry.ts`) manages lifecycle: `initModules` in
 - **`lib/messaging.ts`** — Type-safe content↔background messaging. `sendMessage(type, data)` from content; `onMessage(type, handler)` in background. All message types are defined in `MessageMap`.
 - **`lib/storage.ts`** — `chrome.storage.sync` for enabled module IDs and per-org settings; `chrome.storage.local` for object describe cache (1-hour TTL, max 25 entries). Default-enabled modules come from `modules/catalog.ts`.
 - **`lib/salesforce-urls.ts`** — Detects org type (production/sandbox/developer/scratch/trailhead) from hostname; parses Lightning URL path into `PageType` and extracts `objectApiName`/`recordId`.
-- **`lib/ui-helpers.ts`** — Shared DOM utilities: `createModal`, `createSpinner`, `createButton`.
-- **`lib/toast.ts`** — Toast notification helper.
+- **`lib/design-tokens.ts`** — Single source of truth for all visual values (colors, fonts, spacing, radii, shadows, z-indices, transitions). All modules and shared components import `tokens` from here. The popup CSS uses matching CSS custom properties (`--sfb-*`).
+- **`lib/ui-helpers.ts`** — Shared DOM utilities: `createModal`, `createSpinner`, `createButton`, `createInput`, `createBadge`, `createFilterBar`. All styled via design tokens.
+- **`lib/toast.ts`** — Toast notification helper. Styled via design tokens.
 
 ### Background API Layer
 
@@ -87,3 +88,18 @@ The content script patches `history.pushState`/`history.replaceState` and listen
 3. Import it in `entrypoints/content/index.ts`
 4. Add the module metadata entry to `MODULE_CATALOG` in `modules/catalog.ts`
 5. Decide the `defaultEnabled` value in `modules/catalog.ts` because that file is the source of truth for defaults shown in the popup and storage
+
+### Design Tokens
+
+All visual values (colors, spacing, typography, shadows, z-indices, transitions) are centralized in `lib/design-tokens.ts`. When creating or modifying UI in any module:
+
+- **Always** import `tokens` from `../../lib/design-tokens` and use token values instead of hardcoded CSS values
+- Use `tokens.color.*` for all colors (brand, text hierarchy, surfaces, borders, semantic)
+- Use `tokens.font.size.*` / `tokens.font.weight.*` / `tokens.font.family.*` for typography
+- Use `tokens.space.*` for padding, margin, and gap values
+- Use `tokens.radius.*` for border-radius
+- Use `tokens.shadow.*` for box-shadow
+- Use `tokens.zIndex.*` for z-index (layering: badge < fab < overlay < modalBackdrop < modal < toast)
+- Use `tokens.transition.*` for transition durations
+- Prefer shared components from `lib/ui-helpers.ts` (`createModal`, `createButton`, `createInput`, `createBadge`, `createFilterBar`) over building from scratch
+- For the popup (`entrypoints/popup/style.css`), use the matching CSS custom properties (`var(--sfb-*)`) instead of hardcoded values

@@ -2,7 +2,7 @@ import { onMessage } from '../../lib/messaging';
 import { getSessionFromCookie, clearSessionCache } from './session-manager';
 import { migrateStorage } from '../../lib/storage';
 import { logger } from '../../lib/logger';
-import { describeObject, executeSOQL, executeSOQLAll, executeToolingQueryAll, createPermissionSet } from './api-client';
+import { describeObject, executeSOQL, executeSOQLAll, executeToolingQueryAll, createPermissionSet, toggleDebugLog } from './api-client';
 import { buildInstanceUrl } from '../../lib/salesforce-urls';
 import { assertAllowedSalesforceInstanceUrl, isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
 
@@ -136,6 +136,14 @@ export default defineBackground(() => {
     const instanceUrl = assertSenderMatchesInstanceUrl(sender, data.instanceUrl);
     return withSession(instanceUrl, (sessionId) =>
       executeToolingQueryAll(instanceUrl, sessionId, data.query),
+    );
+  });
+
+  // Handle debug log toggle
+  onMessage('toggleDebugLog', async (data, sender) => {
+    const instanceUrl = assertSenderMatchesInstanceUrl(sender, data.instanceUrl);
+    return withSession(instanceUrl, (sessionId) =>
+      toggleDebugLog(instanceUrl, sessionId),
     );
   });
 

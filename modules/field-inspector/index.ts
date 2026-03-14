@@ -2,6 +2,7 @@ import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
 import { showToast } from '../../lib/toast';
+import { tokens } from '../../lib/design-tokens';
 
 const BADGE_CLASS = 'sfboost-field-badge';
 const TOGGLE_ID = 'sfboost-inspector-toggle';
@@ -26,18 +27,18 @@ function createToggleButton() {
   btn.textContent = '{ }';
   btn.title = 'Toggle Field Inspector (Alt+Shift+F)';
   btn.setAttribute('style', `
-    position: fixed; bottom: 20px; right: 20px;
+    position: fixed; bottom: ${tokens.space['2xl']}; right: ${tokens.space['2xl']};
     width: 44px; height: 44px;
-    border-radius: 50%;
+    border-radius: ${tokens.radius.full};
     border: none;
-    background: ${isActive ? '#0176d3' : '#1a1a2e'};
-    color: #fff;
-    font-size: 16px; font-weight: 700;
+    background: ${isActive ? tokens.color.primary : tokens.color.surfaceDark};
+    color: ${tokens.color.textOnPrimary};
+    font-size: ${tokens.font.size.lg}; font-weight: ${tokens.font.weight.bold};
     cursor: pointer;
-    z-index: 999998;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-    transition: background 0.2s, transform 0.2s;
-    font-family: monospace;
+    z-index: ${tokens.zIndex.fab};
+    box-shadow: ${tokens.shadow.md};
+    transition: background ${tokens.transition.slow}, transform ${tokens.transition.slow};
+    font-family: ${tokens.font.family.mono};
   `);
 
   btn.addEventListener('mouseenter', () => { btn.style.transform = 'scale(1.1)'; });
@@ -56,14 +57,14 @@ async function toggleInspector() {
   isActive = !isActive;
   const btn = document.getElementById(TOGGLE_ID) as HTMLButtonElement | null;
   if (btn) {
-    btn.style.background = isActive ? '#0176d3' : '#1a1a2e';
+    btn.style.background = isActive ? tokens.color.primary : tokens.color.surfaceDark;
   }
 
   if (isActive) {
     const applied = await showFieldBadges();
     if (!applied) {
       isActive = false;
-      if (btn) btn.style.background = '#1a1a2e';
+      if (btn) btn.style.background = tokens.color.surfaceDark;
     }
   } else {
     removeFieldBadges();
@@ -125,17 +126,17 @@ async function showFieldBadges(): Promise<boolean> {
     badge.className = BADGE_CLASS;
     badge.setAttribute('style', `
       display: inline-block;
-      margin-left: 6px;
-      padding: 1px 6px;
-      background: #e8f0fe;
-      color: #0176d3;
-      font-size: 10px;
-      font-weight: 600;
-      border-radius: 4px;
-      font-family: monospace;
+      margin-left: ${tokens.space.sm};
+      padding: 1px ${tokens.space.sm};
+      background: ${tokens.color.primaryLight};
+      color: ${tokens.color.primary};
+      font-size: ${tokens.font.size.xs};
+      font-weight: ${tokens.font.weight.semibold};
+      border-radius: ${tokens.radius.sm};
+      font-family: ${tokens.font.family.mono};
       cursor: pointer;
       vertical-align: middle;
-      border: 1px solid #b8d4f0;
+      border: 1px solid ${tokens.color.primaryBorder};
     `);
     badge.textContent = fieldInfo.apiName;
     badge.title = `Type: ${fieldInfo.type}${fieldInfo.required ? ' | Required' : ''}\nClick to copy`;
@@ -145,17 +146,17 @@ async function showFieldBadges(): Promise<boolean> {
       try {
         await navigator.clipboard.writeText(fieldInfo.apiName);
         badge.textContent = 'Copied!';
-        badge.style.background = '#2ecc71';
-        badge.style.color = '#fff';
+        badge.style.background = tokens.color.success;
+        badge.style.color = tokens.color.textOnPrimary;
       } catch {
         badge.textContent = 'Failed';
-        badge.style.background = '#ef4444';
-        badge.style.color = '#fff';
+        badge.style.background = tokens.color.error;
+        badge.style.color = tokens.color.textOnPrimary;
       }
       setTimeout(() => {
         badge.textContent = fieldInfo.apiName;
-        badge.style.background = '#e8f0fe';
-        badge.style.color = '#0176d3';
+        badge.style.background = tokens.color.primaryLight;
+        badge.style.color = tokens.color.primary;
       }, 1000);
     });
 
@@ -196,7 +197,7 @@ const fieldInspector: SFBoostModule = {
     if (ctx.pageContext.pageType === 'record') {
       if (!existingBtn) createToggleButton();
       const btn = document.getElementById(TOGGLE_ID) as HTMLButtonElement | null;
-      if (btn) btn.style.background = '#1a1a2e';
+      if (btn) btn.style.background = tokens.color.surfaceDark;
     } else {
       existingBtn?.remove();
     }

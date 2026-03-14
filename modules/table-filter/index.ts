@@ -1,8 +1,11 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
+import { tokens } from '../../lib/design-tokens';
 
 const DATA_ATTR = 'data-sfboost-table-filter';
 const CONTAINER_CLASS = 'sfboost-table-filter';
+const HIGHLIGHT_CLASS = 'sfboost-tf-highlight';
+const NO_MATCH_CLASS = 'sfboost-tf-no-match';
 const AUTO_HYDRATE_MAX_ROWS = 200;
 const HYDRATE_STEP_DELAY_MS = 120;
 const HYDRATE_MAX_STEPS = 60;
@@ -119,7 +122,7 @@ function createSearchIcon(): SVGSVGElement {
   circle.setAttribute('cx', '6.5');
   circle.setAttribute('cy', '6.5');
   circle.setAttribute('r', '5.5');
-  circle.setAttribute('stroke', '#706e6b');
+  circle.setAttribute('stroke', tokens.color.textSalesforceGray);
   circle.setAttribute('stroke-width', '1.5');
 
   const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -127,7 +130,7 @@ function createSearchIcon(): SVGSVGElement {
   line.setAttribute('y1', '10.5');
   line.setAttribute('x2', '15');
   line.setAttribute('y2', '15');
-  line.setAttribute('stroke', '#706e6b');
+  line.setAttribute('stroke', tokens.color.textSalesforceGray);
   line.setAttribute('stroke-width', '1.5');
   line.setAttribute('stroke-linecap', 'round');
 
@@ -142,14 +145,14 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
   container.setAttribute('style', `
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    margin-bottom: 4px;
-    background: #fff;
-    border: 1px solid #d8dde6;
-    border-radius: 4px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    gap: ${tokens.space.md};
+    padding: ${tokens.space.sm} ${tokens.space.lg};
+    margin-bottom: ${tokens.space.xs};
+    background: ${tokens.color.surfaceBase};
+    border: 1px solid ${tokens.color.borderInput};
+    border-radius: ${tokens.radius.sm};
+    font-family: ${tokens.font.family.sans};
+    box-shadow: ${tokens.shadow.xs};
   `);
 
   container.appendChild(createSearchIcon());
@@ -159,24 +162,24 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
   input.placeholder = 'Filter table...';
   input.setAttribute('style', `
     flex: 1;
-    padding: 5px 8px;
-    border: 1px solid #d8dde6;
-    border-radius: 4px;
-    font-size: 13px;
+    padding: 5px ${tokens.space.md};
+    border: 1px solid ${tokens.color.borderInput};
+    border-radius: ${tokens.radius.sm};
+    font-size: ${tokens.font.size.base};
     outline: none;
-    color: #181818;
-    background: #fff;
+    color: ${tokens.color.textPrimary};
+    background: ${tokens.color.surfaceBase};
     min-width: 180px;
     max-width: 320px;
-    transition: border-color 0.15s;
+    transition: border-color ${tokens.transition.normal};
   `);
-  input.addEventListener('focus', () => { input.style.borderColor = '#0176d3'; });
-  input.addEventListener('blur', () => { input.style.borderColor = '#d8dde6'; });
+  input.addEventListener('focus', () => { input.style.borderColor = tokens.color.primary; });
+  input.addEventListener('blur', () => { input.style.borderColor = tokens.color.borderInput; });
 
   const count = document.createElement('span');
   count.setAttribute('style', `
-    font-size: 12px;
-    color: #706e6b;
+    font-size: ${tokens.font.size.sm};
+    color: ${tokens.color.textSalesforceGray};
     white-space: nowrap;
     user-select: none;
   `);
@@ -188,15 +191,16 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
     display: none;
     border: none;
     background: none;
-    color: #706e6b;
+    color: ${tokens.color.textSalesforceGray};
     font-size: 18px;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 0 ${tokens.space.xs};
     line-height: 1;
     flex-shrink: 0;
+    transition: color ${tokens.transition.normal};
   `);
-  clearBtn.addEventListener('mouseenter', () => { clearBtn.style.color = '#181818'; });
-  clearBtn.addEventListener('mouseleave', () => { clearBtn.style.color = '#706e6b'; });
+  clearBtn.addEventListener('mouseenter', () => { clearBtn.style.color = tokens.color.textPrimary; });
+  clearBtn.addEventListener('mouseleave', () => { clearBtn.style.color = tokens.color.textSalesforceGray; });
 
   const state: TableState = {
     activeQuery: '',
@@ -313,22 +317,105 @@ function updateLoadingCount(table: HTMLTableElement, countEl: HTMLElement): void
     : `Loading ${loaded} rows...`;
 }
 
+function clearHighlights(table: HTMLTableElement): void {
+  table.querySelectorAll(`.${HIGHLIGHT_CLASS}`).forEach(mark => {
+    const parent = mark.parentNode;
+    if (parent) {
+      parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+      parent.normalize();
+    }
+  });
+}
+
+function highlightMatches(table: HTMLTableElement, terms: string[]): void {
+  if (terms.length === 0) return;
+
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
+
+  const rows = getBodyRows(table);
+  for (const row of rows) {
+    if (row.style.display === 'none') continue;
+    const cells = row.querySelectorAll('td, th');
+    for (const cell of cells) {
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+
+      for (const node of textNodes) {
+        const text = node.textContent || '';
+        if (!text.trim()) continue;
+        const parts = text.split(regex);
+        if (parts.length <= 1) continue;
+
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (!part) continue;
+          if (i % 2 === 1) {
+            const mark = document.createElement('mark');
+            mark.className = HIGHLIGHT_CLASS;
+            mark.style.cssText = `background:${tokens.color.surfaceHighlight};color:inherit;padding:0 1px;border-radius:${tokens.radius.xs};`;
+            mark.textContent = part;
+            frag.appendChild(mark);
+          } else {
+            frag.appendChild(document.createTextNode(part));
+          }
+        }
+        node.parentNode?.replaceChild(frag, node);
+      }
+    }
+  }
+}
+
+function showNoMatchMessage(table: HTMLTableElement): void {
+  hideNoMatchMessage(table);
+  const msg = document.createElement('tr');
+  msg.className = NO_MATCH_CLASS;
+  const cell = document.createElement('td');
+  const colCount = table.querySelector('tr')?.children.length || 1;
+  cell.setAttribute('colspan', String(colCount));
+  cell.setAttribute('style', `
+    text-align: center; padding: 24px ${tokens.space.xl}; color: ${tokens.color.textSalesforceGray};
+    font-size: ${tokens.font.size.base}; font-style: italic;
+  `);
+  cell.textContent = 'No matches found';
+  msg.appendChild(cell);
+  const tbody = table.querySelector('tbody') || table;
+  tbody.appendChild(msg);
+}
+
+function hideNoMatchMessage(table: HTMLTableElement): void {
+  table.querySelectorAll(`.${NO_MATCH_CLASS}`).forEach(el => el.remove());
+}
+
 function applyFilterToLoadedRows(table: HTMLTableElement, query: string, countEl: HTMLElement): void {
   const trimmed = query.trim().toLowerCase();
   const terms = trimmed.split(/\s+/).filter(Boolean);
   const rows = getBodyRows(table);
 
+  clearHighlights(table);
+  hideNoMatchMessage(table);
+
+  let visible = 0;
   for (const row of rows) {
     if (terms.length === 0) {
       row.style.display = '';
+      visible++;
       continue;
     }
 
     const text = getRowText(row);
     const match = terms.every(term => text.includes(term));
     row.style.display = match ? '' : 'none';
+    if (match) visible++;
   }
 
+  if (terms.length > 0 && visible === 0) {
+    showNoMatchMessage(table);
+  }
+
+  highlightMatches(table, terms);
   updateCount(table, countEl, trimmed);
 }
 
@@ -577,6 +664,8 @@ function removeAllFilters(): void {
 
   document.querySelectorAll(`.${CONTAINER_CLASS}`).forEach(el => el.remove());
   document.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {
+    clearHighlights(table);
+    hideNoMatchMessage(table);
     getBodyRows(table).forEach(row => { row.style.display = ''; });
     table.removeAttribute(DATA_ATTR);
   });

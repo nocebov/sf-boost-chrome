@@ -22,6 +22,10 @@ export interface MessageMap {
     data: { instanceUrl: string; query: string };
     response: any;
   };
+  toggleDebugLog: {
+    data: { instanceUrl: string };
+    response: { active: boolean; expirationDate?: string };
+  };
   createPermissionSet: {
     data: {
       instanceUrl: string;

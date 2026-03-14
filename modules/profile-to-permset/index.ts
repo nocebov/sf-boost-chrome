@@ -2,6 +2,7 @@ import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import { createModal, createSpinner, createButton } from '../../lib/ui-helpers';
 import { showToast } from '../../lib/toast';
+import { tokens } from '../../lib/design-tokens';
 import {
   extractProfileIdFromUrl,
   readProfilePermissions,
@@ -127,7 +128,7 @@ function injectButton(): boolean {
 
   const btn = createButton('Extract to Permission Set');
   btn.id = BTN_ID;
-  btn.style.marginLeft = '12px';
+  btn.style.marginLeft = tokens.space.lg;
   btn.style.verticalAlign = 'middle';
 
   btn.addEventListener('click', () => openWizard(profileId));
@@ -183,7 +184,7 @@ async function openWizard(profileId: string): Promise<void> {
   } catch (err: any) {
     loadingDiv.remove();
     const errorDiv = document.createElement('div');
-    errorDiv.setAttribute('style', 'padding: 20px; color: #ef4444; font-size: 13px;');
+    errorDiv.setAttribute('style', `padding: ${tokens.space['2xl']}; color: ${tokens.color.error}; font-size: ${tokens.font.size.base};`);
     errorDiv.textContent = `Error reading profile: ${err.message}`;
     card.appendChild(errorDiv);
   }
@@ -192,15 +193,15 @@ async function openWizard(profileId: string): Promise<void> {
 function createHeader(titleText: string, close: () => void): HTMLDivElement {
   const headerDiv = document.createElement('div');
   headerDiv.setAttribute('style', `
-    padding: 16px 20px;
-    border-bottom: 1px solid #e5e7eb;
+    padding: ${tokens.space.xl} ${tokens.space['2xl']};
+    border-bottom: 1px solid ${tokens.color.borderDefault};
     display: flex;
     align-items: center;
     justify-content: space-between;
   `);
 
   const title = document.createElement('h2');
-  title.setAttribute('style', 'margin: 0; font-size: 16px; font-weight: 700; color: #181818;');
+  title.setAttribute('style', `margin: 0; font-size: ${tokens.font.size.lg}; font-weight: ${tokens.font.weight.bold}; color: ${tokens.color.textPrimary};`);
   title.textContent = titleText;
 
   const closeBtn = document.createElement('button');
@@ -208,7 +209,7 @@ function createHeader(titleText: string, close: () => void): HTMLDivElement {
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.setAttribute('style', `
     border: none; background: none; font-size: 22px; cursor: pointer;
-    color: #706e6b; padding: 0 4px; line-height: 1;
+    color: ${tokens.color.textSalesforceGray}; padding: 0 ${tokens.space.xs}; line-height: 1;
   `);
   closeBtn.addEventListener('click', close);
 
@@ -218,10 +219,10 @@ function createHeader(titleText: string, close: () => void): HTMLDivElement {
 
 function createLoadingStep(text: string): HTMLDivElement {
   const div = document.createElement('div');
-  div.setAttribute('style', 'padding: 40px; display: flex; flex-direction: column; align-items: center; gap: 12px;');
+  div.setAttribute('style', `padding: 40px; display: flex; flex-direction: column; align-items: center; gap: ${tokens.space.lg};`);
   div.appendChild(createSpinner());
   const label = document.createElement('span');
-  label.setAttribute('style', 'color: #706e6b; font-size: 13px;');
+  label.setAttribute('style', `color: ${tokens.color.textSalesforceGray}; font-size: ${tokens.font.size.base};`);
   label.textContent = text;
   div.appendChild(label);
   return div;
@@ -312,34 +313,34 @@ function setCardExpanded(card: HTMLDivElement): void {
   card.style.maxWidth = '1080px';
   card.style.height = 'calc(100vh - 48px)';
   card.style.maxHeight = 'calc(100vh - 48px)';
-  card.style.borderRadius = '14px';
+  card.style.borderRadius = tokens.radius.xl;
   card.style.transition = [
-    'transform 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
-    'opacity 0.15s',
-    'width 0.18s ease',
-    'height 0.18s ease',
-    'max-height 0.18s ease',
-    'max-width 0.18s ease',
+    `transform ${tokens.transition.modalEase}`,
+    `opacity ${tokens.transition.normal}`,
+    `width ${tokens.transition.normal} ease`,
+    `height ${tokens.transition.normal} ease`,
+    `max-height ${tokens.transition.normal} ease`,
+    `max-width ${tokens.transition.normal} ease`,
   ].join(', ');
 }
 
-function createStatCard(label: string, value: string, accent = '#0176d3'): HTMLDivElement {
+function createStatCard(label: string, value: string, accent: string = tokens.color.primary): HTMLDivElement {
   const card = document.createElement('div');
   card.setAttribute('style', `
     min-width: 64px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    border: 1px solid #dbe4f0;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: ${tokens.space.sm} ${tokens.space.lg};
+    border-radius: ${tokens.radius.lg};
+    border: 1px solid ${tokens.color.borderInput};
+    background: linear-gradient(180deg, ${tokens.color.surfaceBase} 0%, ${tokens.color.surfaceRaised} 100%);
     text-align: center;
   `);
 
   const valueEl = document.createElement('div');
-  valueEl.setAttribute('style', `font-size: 16px; font-weight: 700; color: ${accent}; line-height: 1.1;`);
+  valueEl.setAttribute('style', `font-size: ${tokens.font.size.lg}; font-weight: ${tokens.font.weight.bold}; color: ${accent}; line-height: 1.1;`);
   valueEl.textContent = value;
 
   const labelEl = document.createElement('div');
-  labelEl.setAttribute('style', 'margin-top: 2px; color: #52606d; font-size: 10px;');
+  labelEl.setAttribute('style', `margin-top: 2px; color: ${tokens.color.textSecondary}; font-size: ${tokens.font.size.xs};`);
   labelEl.textContent = label;
 
   card.append(valueEl, labelEl);
@@ -348,10 +349,10 @@ function createStatCard(label: string, value: string, accent = '#0176d3'): HTMLD
 
 function setExecutionStageStyle(view: ExecutionStageView, state: 'pending' | 'active' | 'done' | 'failed'): void {
   const palette = {
-    pending: { dot: '#d7dee7', title: '#6b7280', row: '#f8fafc', border: '#e5e7eb' },
-    active: { dot: '#0176d3', title: '#0f172a', row: '#eef6ff', border: '#93c5fd' },
-    done: { dot: '#16a34a', title: '#14532d', row: '#f0fdf4', border: '#86efac' },
-    failed: { dot: '#dc2626', title: '#7f1d1d', row: '#fef2f2', border: '#fca5a5' },
+    pending: { dot: '#d7dee7', title: tokens.color.textTertiary, row: tokens.color.surfaceRaised, border: tokens.color.borderDefault },
+    active: { dot: tokens.color.primary, title: tokens.color.textPrimary, row: tokens.color.infoLight, border: tokens.color.infoBorder },
+    done: { dot: tokens.color.success, title: tokens.color.successText, row: tokens.color.successLight, border: tokens.color.successBorder },
+    failed: { dot: tokens.color.error, title: tokens.color.errorText, row: tokens.color.errorLight, border: tokens.color.errorBorder },
   }[state];
 
   view.row.style.background = palette.row;
@@ -430,60 +431,60 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: linear-gradient(180deg, #f8fbff 0%, #f8fafc 100%);
+    background: linear-gradient(180deg, ${tokens.color.surfaceRaised} 0%, #f8fafc 100%);
   `);
 
   // --- Compact top bar ---
   const top = document.createElement('div');
   top.setAttribute('style', `
     flex: 0 0 auto;
-    padding: 12px 16px;
-    border-bottom: 1px solid #dbe4f0;
+    padding: ${tokens.space.lg} ${tokens.space.xl};
+    border-bottom: 1px solid ${tokens.color.borderDefault};
     background: rgba(255,255,255,0.88);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: ${tokens.space.lg};
     flex-wrap: wrap;
   `);
 
   const intro = document.createElement('div');
-  intro.setAttribute('style', 'flex: 1 1 auto; min-width: 200px; display: flex; flex-direction: column; gap: 4px;');
+  intro.setAttribute('style', 'flex: 1 1 auto; min-width: 200px; display: flex; flex-direction: column; gap: ${tokens.space.xs};');
 
   const statusRow = document.createElement('div');
-  statusRow.setAttribute('style', 'display: flex; align-items: center; gap: 8px;');
+  statusRow.setAttribute('style', `display: flex; align-items: center; gap: ${tokens.space.md};`);
 
   const statusPill = document.createElement('span');
   statusPill.setAttribute('style', `
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #dbeafe;
-    color: #1d4ed8;
-    font-size: 10px;
-    font-weight: 700;
+    padding: 2px ${tokens.space.md};
+    border-radius: ${tokens.radius.pill};
+    background: ${tokens.color.infoLight};
+    color: ${tokens.color.infoText};
+    font-size: ${tokens.font.size.xs};
+    font-weight: ${tokens.font.weight.bold};
     letter-spacing: 0.04em;
     text-transform: uppercase;
   `);
   statusPill.textContent = 'In Progress';
 
   const statusTitle = document.createElement('h3');
-  statusTitle.setAttribute('style', 'margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;');
+  statusTitle.setAttribute('style', `margin: 0; font-size: 15px; font-weight: ${tokens.font.weight.bold}; color: ${tokens.color.textPrimary};`);
   statusTitle.textContent = 'Creating Permission Set';
 
   statusRow.append(statusPill, statusTitle);
 
   const statusText = document.createElement('p');
-  statusText.setAttribute('style', 'margin: 0; color: #64748b; font-size: 11px; line-height: 1.3;');
+  statusText.setAttribute('style', `margin: 0; color: ${tokens.color.textTertiary}; font-size: ${tokens.font.size.sm}; line-height: 1.3;`);
   statusText.textContent = `Target: ${permissionSetName}`;
 
   intro.append(statusRow, statusText);
 
   const statGrid = document.createElement('div');
-  statGrid.setAttribute('style', 'flex: 0 0 auto; display: flex; gap: 6px;');
+  statGrid.setAttribute('style', `flex: 0 0 auto; display: flex; gap: ${tokens.space.sm};`);
   statGrid.append(
     createStatCard('Requested', `${summary.total}`),
-    createStatCard('Objects', `${summary.objectPermissions}`, '#0f766e'),
-    createStatCard('Fields', `${summary.fieldPermissions}`, '#7c3aed'),
-    createStatCard('Other', `${summary.userPermissions + summary.tabSettings + summary.setupEntityAccess}`, '#b45309'),
+    createStatCard('Objects', `${summary.objectPermissions}`, tokens.color.envTrailhead),
+    createStatCard('Fields', `${summary.fieldPermissions}`, tokens.color.envScratch),
+    createStatCard('Other', `${summary.userPermissions + summary.tabSettings + summary.setupEntityAccess}`, tokens.color.warning),
   );
 
   top.append(intro, statGrid);
@@ -494,8 +495,8 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     flex: 1 1 0;
     min-height: 0;
     display: flex;
-    gap: 12px;
-    padding: 12px;
+    gap: ${tokens.space.lg};
+    padding: ${tokens.space.lg};
     overflow: hidden;
   `);
 
@@ -508,12 +509,12 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     min-height: 0;
     padding: 10px;
     background: rgba(255,255,255,0.92);
-    border: 1px solid #dbe4f0;
-    border-radius: 10px;
+    border: 1px solid ${tokens.color.borderDefault};
+    border-radius: ${tokens.radius.xl};
   `);
 
   const stageHeading = document.createElement('div');
-  stageHeading.setAttribute('style', 'font-size: 10px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;');
+  stageHeading.setAttribute('style', `font-size: ${tokens.font.size.xs}; font-weight: ${tokens.font.weight.bold}; color: ${tokens.color.textSecondary}; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: ${tokens.space.sm};`);
   stageHeading.textContent = 'Execution Stages';
   stageCard.appendChild(stageHeading);
 
@@ -521,7 +522,7 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
   stageList.setAttribute('style', `
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: ${tokens.space.xs};
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -534,25 +535,25 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     row.setAttribute('style', `
       display: grid;
       grid-template-columns: 8px minmax(0, 1fr);
-      gap: 6px;
+      gap: ${tokens.space.sm};
       align-items: start;
-      padding: 5px 8px;
-      border-radius: 6px;
-      border: 1px solid #e5e7eb;
+      padding: 5px ${tokens.space.md};
+      border-radius: ${tokens.radius.md};
+      border: 1px solid ${tokens.color.borderDefault};
     `);
 
     const dot = document.createElement('span');
-    dot.setAttribute('style', 'width: 8px; height: 8px; border-radius: 999px; margin-top: 3px; background: #d7dee7;');
+    dot.setAttribute('style', `width: 8px; height: 8px; border-radius: ${tokens.radius.pill}; margin-top: 3px; background: #d7dee7;`);
 
     const textWrap = document.createElement('div');
     textWrap.setAttribute('style', 'display: flex; flex-direction: column; gap: 1px; min-width: 0;');
 
     const title = document.createElement('span');
-    title.setAttribute('style', 'font-size: 11px; font-weight: 600; color: #6b7280;');
+    title.setAttribute('style', `font-size: ${tokens.font.size.sm}; font-weight: ${tokens.font.weight.semibold}; color: ${tokens.color.textTertiary};`);
     title.textContent = stage.title;
 
     const description = document.createElement('span');
-    description.setAttribute('style', 'font-size: 10px; color: #64748b; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;');
+    description.setAttribute('style', `font-size: ${tokens.font.size.xs}; color: ${tokens.color.textTertiary}; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;`);
     description.textContent = stage.description;
 
     textWrap.append(title, description);
@@ -571,15 +572,15 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 12px;
-    border-radius: 10px;
-    border: 1px dashed #cbd5e1;
+    padding: ${tokens.space.lg};
+    border-radius: ${tokens.radius.xl};
+    border: 1px dashed ${tokens.color.borderMuted};
     background: rgba(255,255,255,0.78);
-    color: #475569;
+    color: ${tokens.color.textSecondary};
   `);
 
   const resultHint = document.createElement('div');
-  resultHint.setAttribute('style', 'font-size: 12px; line-height: 1.45; color: #64748b; padding: 20px 0; text-align: center;');
+  resultHint.setAttribute('style', `font-size: 12px; line-height: 1.45; color: ${tokens.color.textTertiary}; padding: ${tokens.space['2xl']} 0; text-align: center;`);
   resultHint.textContent = 'Results will appear here when the run finishes. Watch the stage tracker for live progress.';
   resultPanel.appendChild(resultHint);
 
@@ -694,19 +695,19 @@ function createOutcomeCard(
   card.setAttribute('style', `
     flex: 1 1 0;
     min-width: 80px;
-    padding: 8px 10px;
-    border-radius: 8px;
+    padding: ${tokens.space.md} 10px;
+    border-radius: ${tokens.radius.lg};
     background: ${palette.background};
     border: 1px solid ${palette.border};
     text-align: center;
   `);
 
   const valueEl = document.createElement('div');
-  valueEl.setAttribute('style', `font-size: 18px; font-weight: 700; color: ${palette.value}; line-height: 1.1;`);
+  valueEl.setAttribute('style', `font-size: 18px; font-weight: ${tokens.font.weight.bold}; color: ${palette.value}; line-height: 1.1;`);
   valueEl.textContent = value;
 
   const label = document.createElement('div');
-  label.setAttribute('style', `margin-top: 2px; font-size: 10px; font-weight: 600; color: ${palette.title}; text-transform: uppercase; letter-spacing: 0.03em;`);
+  label.setAttribute('style', `margin-top: 2px; font-size: ${tokens.font.size.xs}; font-weight: ${tokens.font.weight.semibold}; color: ${palette.title}; text-transform: uppercase; letter-spacing: 0.03em;`);
   label.textContent = title;
 
   card.append(valueEl, label);
@@ -715,16 +716,16 @@ function createOutcomeCard(
 
 function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HTMLDetailsElement {
   const palette = group.tone === 'danger'
-    ? { border: '#fecaca', background: '#fef2f2', title: '#991b1b', badge: '#dc2626' }
+    ? { border: tokens.color.errorBorder, background: tokens.color.errorLight, title: tokens.color.errorText, badge: tokens.color.error }
     : group.tone === 'neutral'
-      ? { border: '#dbe4f0', background: '#f8fafc', title: '#334155', badge: '#64748b' }
-      : { border: '#fde68a', background: '#fffaf0', title: '#92400e', badge: '#d97706' };
+      ? { border: tokens.color.borderDefault, background: tokens.color.surfaceRaised, title: tokens.color.textSecondary, badge: tokens.color.textTertiary }
+      : { border: tokens.color.warningBorder, background: tokens.color.warningLight, title: tokens.color.warningText, badge: tokens.color.warning };
 
   const details = document.createElement('details');
   details.open = openByDefault;
   details.setAttribute('style', `
     border: 1px solid ${palette.border};
-    border-radius: 8px;
+    border-radius: ${tokens.radius.lg};
     background: ${palette.background};
     overflow: hidden;
   `);
@@ -733,27 +734,27 @@ function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HT
   summary.setAttribute('style', `
     list-style: none;
     cursor: pointer;
-    padding: 8px 10px;
+    padding: ${tokens.space.md} 10px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: ${tokens.space.md};
   `);
 
   const title = document.createElement('span');
-  title.setAttribute('style', `font-size: 12px; font-weight: 700; color: ${palette.title};`);
+  title.setAttribute('style', `font-size: 12px; font-weight: ${tokens.font.weight.bold}; color: ${palette.title};`);
   title.textContent = group.title;
 
   const badge = document.createElement('span');
   badge.setAttribute('style', `
     flex: 0 0 auto;
     padding: 2px 7px;
-    border-radius: 999px;
-    background: #ffffff;
+    border-radius: ${tokens.radius.pill};
+    background: ${tokens.color.surfaceBase};
     color: ${palette.badge};
     border: 1px solid ${palette.border};
-    font-size: 10px;
-    font-weight: 700;
+    font-size: ${tokens.font.size.xs};
+    font-weight: ${tokens.font.weight.bold};
   `);
   badge.textContent = `${group.items.length}`;
 
@@ -767,28 +768,28 @@ function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HT
     gap: 3px;
     max-height: 300px;
     overflow-y: auto;
-    padding: 0 10px 8px;
+    padding: 0 10px ${tokens.space.md};
   `);
 
   group.items.forEach((item) => {
     const row = document.createElement('div');
     row.setAttribute('style', `
       display: flex;
-      gap: 8px;
-      padding: 4px 6px;
-      border-radius: 4px;
+      gap: ${tokens.space.md};
+      padding: ${tokens.space.xs} ${tokens.space.sm};
+      border-radius: ${tokens.radius.sm};
       background: rgba(255,255,255,0.72);
-      font-size: 10px;
+      font-size: ${tokens.font.size.xs};
       line-height: 1.35;
     `);
 
     const name = document.createElement('span');
-    name.setAttribute('style', 'font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: #0f172a; white-space: nowrap; flex: 0 0 auto; max-width: 200px; overflow: hidden; text-overflow: ellipsis;');
+    name.setAttribute('style', `font-family: ${tokens.font.family.mono}; color: ${tokens.color.textPrimary}; white-space: nowrap; flex: 0 0 auto; max-width: 200px; overflow: hidden; text-overflow: ellipsis;`);
     name.textContent = `${item.type}: ${item.name}`;
     name.title = `${item.type}: ${item.name}`;
 
     const error = document.createElement('span');
-    error.setAttribute('style', 'color: #475569; flex: 1 1 auto; min-width: 0;');
+    error.setAttribute('style', `color: ${tokens.color.textSecondary}; flex: 1 1 auto; min-width: 0;`);
     error.textContent = item.error;
 
     row.append(name, error);
@@ -807,7 +808,7 @@ function renderExecutionResult(
 ): void {
   view.resultPanel.textContent = '';
   // Switch from dashed placeholder to solid result container
-  view.resultPanel.style.border = '1px solid #dbe4f0';
+  view.resultPanel.style.border = `1px solid ${tokens.color.borderDefault}`;
   view.resultPanel.style.background = 'rgba(255,255,255,0.92)';
 
   const warningGroups = groupNotices(result.warnings);
@@ -816,10 +817,10 @@ function renderExecutionResult(
   view.statusPill.textContent = result.success ? (result.warnings.length > 0 ? 'Completed With Warnings' : 'Completed') : 'Failed';
   view.statusPill.style.background = result.success
     ? (result.warnings.length > 0 ? '#fef3c7' : '#dcfce7')
-    : '#fee2e2';
+    : tokens.color.errorLight;
   view.statusPill.style.color = result.success
-    ? (result.warnings.length > 0 ? '#92400e' : '#166534')
-    : '#991b1b';
+    ? (result.warnings.length > 0 ? tokens.color.warningText : tokens.color.successText)
+    : tokens.color.errorText;
   view.statusTitle.textContent = result.success
     ? (result.warnings.length > 0 ? 'Created With Adjustments' : 'Created Successfully')
     : 'Creation Failed';
@@ -829,19 +830,19 @@ function renderExecutionResult(
   banner.setAttribute('style', `
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: ${tokens.space.md};
     justify-content: space-between;
     align-items: center;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid ${result.success ? (result.warnings.length > 0 ? '#fde68a' : '#86efac') : '#fca5a5'};
+    padding: 10px ${tokens.space.lg};
+    border-radius: ${tokens.radius.xl};
+    border: 1px solid ${result.success ? (result.warnings.length > 0 ? tokens.color.warningBorder : tokens.color.successBorder) : tokens.color.errorBorder};
     background: ${result.success
-      ? (result.warnings.length > 0 ? '#fffaf0' : '#f0fdf4')
-      : '#fef2f2'};
+      ? (result.warnings.length > 0 ? tokens.color.warningLight : tokens.color.successLight)
+      : tokens.color.errorLight};
   `);
 
   const bannerText = document.createElement('div');
-  bannerText.setAttribute('style', 'font-size: 12px; line-height: 1.4; color: #475569; flex: 1 1 auto; min-width: 200px;');
+  bannerText.setAttribute('style', `font-size: 12px; line-height: 1.4; color: ${tokens.color.textSecondary}; flex: 1 1 auto; min-width: 200px;`);
   bannerText.textContent = result.success
     ? (result.warnings.length > 0
       ? 'Some permissions were downgraded, skipped, or ignored. Review warnings below.'
@@ -853,7 +854,7 @@ function renderExecutionResult(
   banner.appendChild(bannerText);
 
   const bannerActions = document.createElement('div');
-  bannerActions.setAttribute('style', 'display: flex; gap: 8px; align-items: center; flex: 0 0 auto;');
+  bannerActions.setAttribute('style', `display: flex; gap: ${tokens.space.md}; align-items: center; flex: 0 0 auto;`);
 
   if (result.success) {
     const openLink = document.createElement('a');
@@ -861,13 +862,13 @@ function renderExecutionResult(
     openLink.target = '_blank';
     openLink.textContent = 'Open Permission Set';
     openLink.setAttribute('style', `
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: #0176d3;
-      color: #ffffff;
+      padding: ${tokens.space.sm} ${tokens.space.lg};
+      border-radius: ${tokens.radius.pill};
+      background: ${tokens.color.primary};
+      color: ${tokens.color.textOnPrimary};
       text-decoration: none;
-      font-size: 11px;
-      font-weight: 700;
+      font-size: ${tokens.font.size.sm};
+      font-weight: ${tokens.font.weight.bold};
       white-space: nowrap;
     `);
     bannerActions.appendChild(openLink);
@@ -875,13 +876,13 @@ function renderExecutionResult(
 
   const outcomeChip = document.createElement('span');
   outcomeChip.setAttribute('style', `
-    padding: 4px 8px;
-    border-radius: 999px;
-    border: 1px solid #dbe4f0;
+    padding: ${tokens.space.xs} ${tokens.space.md};
+    border-radius: ${tokens.radius.pill};
+    border: 1px solid ${tokens.color.borderDefault};
     background: rgba(255,255,255,0.8);
-    color: #334155;
-    font-size: 10px;
-    font-weight: 600;
+    color: ${tokens.color.textSecondary};
+    font-size: ${tokens.font.size.xs};
+    font-weight: ${tokens.font.weight.semibold};
     white-space: nowrap;
   `);
   outcomeChip.textContent = result.success ? `Warnings: ${result.warnings.length}` : `Issues: ${result.failures.length}`;
@@ -890,35 +891,35 @@ function renderExecutionResult(
 
   // Compact metrics row
   const metrics = document.createElement('div');
-  metrics.setAttribute('style', 'display: flex; gap: 8px;');
+  metrics.setAttribute('style', `display: flex; gap: ${tokens.space.md};`);
   metrics.append(
     createOutcomeCard(
       'Requested',
       `${summary.total}`,
       '',
-      { background: '#eff6ff', border: '#bfdbfe', title: '#1d4ed8', value: '#1d4ed8' },
+      { background: tokens.color.infoLight, border: tokens.color.infoBorder, title: tokens.color.infoText, value: tokens.color.infoText },
     ),
     createOutcomeCard(
       'Warnings',
       `${result.warnings.length}`,
       '',
-      { background: '#fffaf0', border: '#fde68a', title: '#92400e', value: '#d97706' },
+      { background: tokens.color.warningLight, border: tokens.color.warningBorder, title: tokens.color.warningText, value: tokens.color.warning },
     ),
     createOutcomeCard(
       'Issues',
       `${result.failures.length}`,
       '',
-      { background: result.failures.length > 0 ? '#fef2f2' : '#f8fafc', border: result.failures.length > 0 ? '#fecaca' : '#dbe4f0', title: result.failures.length > 0 ? '#991b1b' : '#334155', value: result.failures.length > 0 ? '#dc2626' : '#334155' },
+      { background: result.failures.length > 0 ? tokens.color.errorLight : tokens.color.surfaceRaised, border: result.failures.length > 0 ? tokens.color.errorBorder : tokens.color.borderDefault, title: result.failures.length > 0 ? tokens.color.errorText : tokens.color.textSecondary, value: result.failures.length > 0 ? tokens.color.error : tokens.color.textSecondary },
     ),
   );
 
   // Warning/failure groups - scrollable within result panel
   const groupsWrap = document.createElement('div');
-  groupsWrap.setAttribute('style', 'display: flex; flex-direction: column; gap: 8px;');
+  groupsWrap.setAttribute('style', `display: flex; flex-direction: column; gap: ${tokens.space.md};`);
 
   if (failureGroups.length > 0) {
     const heading = document.createElement('div');
-    heading.setAttribute('style', 'font-size: 12px; font-weight: 700; color: #991b1b;');
+    heading.setAttribute('style', `font-size: 12px; font-weight: ${tokens.font.weight.bold}; color: ${tokens.color.errorText};`);
     heading.textContent = 'Blocking Issues';
     groupsWrap.appendChild(heading);
     failureGroups.forEach((group, index) => {
@@ -928,7 +929,7 @@ function renderExecutionResult(
 
   if (warningGroups.length > 0) {
     const heading = document.createElement('div');
-    heading.setAttribute('style', `font-size: 12px; font-weight: 700; color: ${failureGroups.length > 0 ? '#334155' : '#92400e'};`);
+    heading.setAttribute('style', `font-size: 12px; font-weight: ${tokens.font.weight.bold}; color: ${failureGroups.length > 0 ? tokens.color.textSecondary : tokens.color.warningText};`);
     heading.textContent = 'Warnings And Adjustments';
     groupsWrap.appendChild(heading);
     warningGroups.forEach((group) => {
@@ -940,11 +941,11 @@ function renderExecutionResult(
     const cleanState = document.createElement('div');
     cleanState.setAttribute('style', `
       padding: 10px;
-      border-radius: 8px;
-      border: 1px solid #bbf7d0;
-      background: #f0fdf4;
-      color: #166534;
-      font-size: 11px;
+      border-radius: ${tokens.radius.lg};
+      border: 1px solid ${tokens.color.successBorder};
+      background: ${tokens.color.successLight};
+      color: ${tokens.color.successText};
+      font-size: ${tokens.font.size.sm};
       line-height: 1.4;
     `);
     cleanState.textContent = 'All selected permissions matched the target org. No adjustments needed.';
@@ -961,12 +962,12 @@ function renderExecutionResult(
     const exportBar = document.createElement('div');
     exportBar.setAttribute('style', `
       display: flex;
-      gap: 6px;
+      gap: ${tokens.space.sm};
       align-items: center;
     `);
 
     const exportLabel = document.createElement('span');
-    exportLabel.setAttribute('style', 'font-size: 11px; color: #64748b; margin-right: auto;');
+    exportLabel.setAttribute('style', `font-size: ${tokens.font.size.sm}; color: ${tokens.color.textTertiary}; margin-right: auto;`);
     exportLabel.textContent = `Export ${allNotices.length} items:`;
 
     const buildRows = (): string[][] => {
@@ -982,32 +983,32 @@ function renderExecutionResult(
     copyBtn.textContent = 'Copy for Excel';
     copyBtn.setAttribute('style', `
       padding: 5px 10px;
-      border-radius: 6px;
-      border: 1px solid #dbe4f0;
-      background: #ffffff;
-      color: #334155;
-      font-size: 11px;
-      font-weight: 600;
+      border-radius: ${tokens.radius.md};
+      border: 1px solid ${tokens.color.borderDefault};
+      background: ${tokens.color.surfaceBase};
+      color: ${tokens.color.textSecondary};
+      font-size: ${tokens.font.size.sm};
+      font-weight: ${tokens.font.weight.semibold};
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.15s;
+      transition: background ${tokens.transition.normal};
     `);
-    copyBtn.addEventListener('mouseenter', () => { copyBtn.style.background = '#f1f5f9'; });
-    copyBtn.addEventListener('mouseleave', () => { copyBtn.style.background = '#ffffff'; });
+    copyBtn.addEventListener('mouseenter', () => { copyBtn.style.background = tokens.color.surfaceRaised; });
+    copyBtn.addEventListener('mouseleave', () => { copyBtn.style.background = tokens.color.surfaceBase; });
     copyBtn.addEventListener('click', () => {
       const rows = buildRows();
       const tsv = rows.map((r) => r.join('\t')).join('\n');
       navigator.clipboard.writeText(tsv).then(() => {
         const prev = copyBtn.textContent;
         copyBtn.textContent = 'Copied!';
-        copyBtn.style.background = '#f0fdf4';
-        copyBtn.style.borderColor = '#86efac';
-        copyBtn.style.color = '#166534';
+        copyBtn.style.background = tokens.color.successLight;
+        copyBtn.style.borderColor = tokens.color.successBorder;
+        copyBtn.style.color = tokens.color.successText;
         setTimeout(() => {
           copyBtn.textContent = prev;
-          copyBtn.style.background = '#ffffff';
-          copyBtn.style.borderColor = '#dbe4f0';
-          copyBtn.style.color = '#334155';
+          copyBtn.style.background = tokens.color.surfaceBase;
+          copyBtn.style.borderColor = tokens.color.borderDefault;
+          copyBtn.style.color = tokens.color.textSecondary;
         }, 1500);
       });
     });
@@ -1016,18 +1017,18 @@ function renderExecutionResult(
     csvBtn.textContent = 'Download CSV';
     csvBtn.setAttribute('style', `
       padding: 5px 10px;
-      border-radius: 6px;
-      border: 1px solid #dbe4f0;
-      background: #ffffff;
-      color: #334155;
-      font-size: 11px;
-      font-weight: 600;
+      border-radius: ${tokens.radius.md};
+      border: 1px solid ${tokens.color.borderDefault};
+      background: ${tokens.color.surfaceBase};
+      color: ${tokens.color.textSecondary};
+      font-size: ${tokens.font.size.sm};
+      font-weight: ${tokens.font.weight.semibold};
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.15s;
+      transition: background ${tokens.transition.normal};
     `);
-    csvBtn.addEventListener('mouseenter', () => { csvBtn.style.background = '#f1f5f9'; });
-    csvBtn.addEventListener('mouseleave', () => { csvBtn.style.background = '#ffffff'; });
+    csvBtn.addEventListener('mouseenter', () => { csvBtn.style.background = tokens.color.surfaceRaised; });
+    csvBtn.addEventListener('mouseleave', () => { csvBtn.style.background = tokens.color.surfaceBase; });
     csvBtn.addEventListener('click', () => {
       const rows = buildRows();
       const csvContent = rows.map((r) =>
@@ -1057,11 +1058,11 @@ function renderSelectionStep(
   close: () => void
 ): void {
   const body = document.createElement('div');
-  body.setAttribute('style', 'padding: 16px 20px; flex: 1; overflow-y: auto;');
+  body.setAttribute('style', `padding: ${tokens.space.xl} ${tokens.space['2xl']}; flex: 1; overflow-y: auto;`);
 
   // Profile info summary
   const info = document.createElement('div');
-  info.setAttribute('style', 'margin-bottom: 16px; font-size: 13px; color: #706e6b;');
+  info.setAttribute('style', `margin-bottom: ${tokens.space.xl}; font-size: ${tokens.font.size.base}; color: ${tokens.color.textSalesforceGray};`);
   const counts: string[] = [`Profile: ${permissions.profileName}`];
   if (permissions.objectPermissions.length) counts.push(`${permissions.objectPermissions.length} objects`);
   if (permissions.fieldPermissions.length) counts.push(`${permissions.fieldPermissions.length} fields`);
@@ -1177,11 +1178,11 @@ function renderSelectionStep(
   // Footer: name input + create button
   const footer = document.createElement('div');
   footer.setAttribute('style', `
-    padding: 16px 20px;
-    border-top: 1px solid #e5e7eb;
+    padding: ${tokens.space.xl} ${tokens.space['2xl']};
+    border-top: 1px solid ${tokens.color.borderDefault};
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: ${tokens.space.lg};
   `);
 
   const nameInput = document.createElement('input');
@@ -1189,12 +1190,12 @@ function renderSelectionStep(
   nameInput.placeholder = 'Permission Set name...';
   nameInput.value = sanitizeApiName(`${permissions.profileName}_Extracted`);
   nameInput.setAttribute('style', `
-    flex: 1; padding: 8px 12px;
-    border: 1px solid #d8dde6; border-radius: 4px;
-    font-size: 13px; outline: none; color: #181818;
+    flex: 1; padding: ${tokens.space.md} ${tokens.space.lg};
+    border: 1px solid ${tokens.color.borderInput}; border-radius: ${tokens.radius.sm};
+    font-size: ${tokens.font.size.base}; outline: none; color: ${tokens.color.textPrimary};
   `);
-  nameInput.addEventListener('focus', () => { nameInput.style.borderColor = '#0176d3'; });
-  nameInput.addEventListener('blur', () => { nameInput.style.borderColor = '#d8dde6'; });
+  nameInput.addEventListener('focus', () => { nameInput.style.borderColor = tokens.color.primary; });
+  nameInput.addEventListener('blur', () => { nameInput.style.borderColor = tokens.color.borderInput; });
 
   const createBtn = createButton('Create Permission Set');
   createBtn.addEventListener('click', async () => {
@@ -1268,8 +1269,8 @@ function renderSelectionStep(
     } catch (err: any) {
       const message = err instanceof Error ? err.message : String(err);
       executionView.statusPill.textContent = 'Failed';
-      executionView.statusPill.style.background = '#fee2e2';
-      executionView.statusPill.style.color = '#991b1b';
+      executionView.statusPill.style.background = tokens.color.errorLight;
+      executionView.statusPill.style.color = tokens.color.errorText;
       executionView.statusTitle.textContent = 'Unexpected Error';
       executionView.statusText.textContent = message;
       updateExecutionStages(executionView, 'finish', 'failure');
@@ -1302,22 +1303,22 @@ function createPermissionSection<T>(
   selectedSet: Set<number>,
 ): HTMLDivElement {
   const section = document.createElement('div');
-  section.setAttribute('style', 'margin-bottom: 16px;');
+  section.setAttribute('style', `margin-bottom: ${tokens.space.xl};`);
 
   // Section header with Select All
   const header = document.createElement('div');
   header.setAttribute('style', `
     display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 12px; background: #f3f4f6; border-radius: 6px;
-    margin-bottom: 4px;
+    padding: ${tokens.space.md} ${tokens.space.lg}; background: ${tokens.color.surfaceSubtle}; border-radius: ${tokens.radius.md};
+    margin-bottom: ${tokens.space.xs};
   `);
 
   const titleSpan = document.createElement('span');
-  titleSpan.setAttribute('style', 'font-size: 13px; font-weight: 600; color: #374151;');
+  titleSpan.setAttribute('style', `font-size: ${tokens.font.size.base}; font-weight: ${tokens.font.weight.semibold}; color: ${tokens.color.textSecondary};`);
   titleSpan.textContent = `${title} (${items.length})`;
 
   const selectAllLabel = document.createElement('label');
-  selectAllLabel.setAttribute('style', 'display: flex; align-items: center; gap: 6px; font-size: 12px; color: #706e6b; cursor: pointer;');
+  selectAllLabel.setAttribute('style', `display: flex; align-items: center; gap: ${tokens.space.sm}; font-size: 12px; color: ${tokens.color.textSalesforceGray}; cursor: pointer;`);
   const selectAllCb = document.createElement('input');
   selectAllCb.type = 'checkbox';
   selectAllCb.checked = true;
@@ -1329,7 +1330,7 @@ function createPermissionSection<T>(
 
   // Items list
   const list = document.createElement('div');
-  list.setAttribute('style', 'max-height: 200px; overflow-y: auto; padding: 4px 0;');
+  list.setAttribute('style', `max-height: 200px; overflow-y: auto; padding: ${tokens.space.xs} 0;`);
 
   // Initialize all selected
   items.forEach((_, i) => selectedSet.add(i));
@@ -1339,8 +1340,8 @@ function createPermissionSection<T>(
   items.forEach((item, index) => {
     const row = document.createElement('div');
     row.setAttribute('style', `
-      display: flex; align-items: center; gap: 8px;
-      padding: 4px 12px; font-size: 12px;
+      display: flex; align-items: center; gap: ${tokens.space.md};
+      padding: ${tokens.space.xs} ${tokens.space.lg}; font-size: 12px;
     `);
 
     const cb = document.createElement('input');
@@ -1357,11 +1358,11 @@ function createPermissionSection<T>(
     checkboxes.push(cb);
 
     const label = document.createElement('span');
-    label.setAttribute('style', 'color: #181818; font-family: monospace;');
+    label.setAttribute('style', `color: ${tokens.color.textPrimary}; font-family: ${tokens.font.family.mono};`);
     label.textContent = getLabel(item);
 
     const detail = document.createElement('span');
-    detail.setAttribute('style', 'color: #9ca3af; margin-left: auto;');
+    detail.setAttribute('style', `color: ${tokens.color.textMuted}; margin-left: auto;`);
     detail.textContent = getDetail(item);
 
     row.append(cb, label, detail);
