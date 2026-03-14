@@ -147,17 +147,30 @@ export default defineBackground(() => {
     );
   });
 
-  // Handle Permission Set creation requests
-  onMessage('createPermissionSet', async (data, sender) => {
-    const { instanceUrl: requestedInstanceUrl, ...payload } = data;
-    const instanceUrl = assertSenderMatchesInstanceUrl(sender, requestedInstanceUrl);
-    return withSession(instanceUrl, (sessionId) =>
-      createPermissionSet(instanceUrl, sessionId, payload, (msg) => {
-        if (sender.tab?.id) {
-          chrome.tabs.sendMessage(sender.tab.id, { type: 'sfboost-progress', message: msg }).catch(() => { });
+  // Handle Permission Set creation via long-lived port (keeps service worker alive during long operations)
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== 'createPermissionSet') return;
+
+    port.onMessage.addListener(async (msg: { data: any }) => {
+      const safeSend = (payload: object) => { try { port.postMessage(payload); } catch { } };
+      try {
+        const { instanceUrl: requestedInstanceUrl, ...payload } = msg.data;
+        const sender = port.sender;
+        if (!sender) {
+          safeSend({ type: 'error', error: 'Connection has no sender' });
+          return;
         }
-      }),
-    );
+        const instanceUrl = assertSenderMatchesInstanceUrl(sender, requestedInstanceUrl);
+        const result = await withSession(instanceUrl, (sessionId) =>
+          createPermissionSet(instanceUrl, sessionId, payload, (progressMsg) => {
+            safeSend({ type: 'progress', message: progressMsg });
+          }),
+        );
+        safeSend({ type: 'complete', result });
+      } catch (e) {
+        safeSend({ type: 'error', error: e instanceof Error ? e.message : 'Unknown error' });
+      }
+    });
   });
 
   // Handle command palette keyboard shortcut

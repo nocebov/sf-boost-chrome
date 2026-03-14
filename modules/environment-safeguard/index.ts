@@ -40,12 +40,16 @@ function isFlowBuilderPage(): boolean {
   return window.location.href.includes('flowBuilder');
 }
 
+function isAppBuilderPage(): boolean {
+  return window.location.href.includes('appBuilder.app');
+}
+
 async function injectBadge(ctx: ModuleContext): Promise<void> {
   // Remove existing badge if any
   document.getElementById(BADGE_ID)?.remove();
 
-  // Hide badge on Flow Builder pages — it overlaps the canvas toolbar
-  if (isFlowBuilderPage()) {
+  // Hide badge on Flow Builder and App Builder pages — it overlaps the canvas toolbar
+  if (isFlowBuilderPage() || isAppBuilderPage()) {
     updateExtensionBadge('');
     return;
   }
@@ -134,7 +138,7 @@ const environmentSafeguard: SFBoostModule = {
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
     if (window.top !== window.self) return;
-    if (isFlowBuilderPage()) {
+    if (isFlowBuilderPage() || isAppBuilderPage()) {
       removeBadge();
       return;
     }

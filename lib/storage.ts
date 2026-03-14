@@ -74,6 +74,33 @@ export async function setOrgSettings(domain: string, settings: OrgSettings): Pro
   await chrome.storage.sync.set({ orgSettings: all });
 }
 
+// Command Palette quick action customization
+export interface CustomQuickAction {
+  id: string;
+  label: string;
+  url: string;
+  icon?: string;
+}
+
+export interface QuickActionConfig {
+  hiddenBuiltInIds: string[];
+  customActions: CustomQuickAction[];
+}
+
+export async function getQuickActionConfig(): Promise<QuickActionConfig> {
+  const result = await chrome.storage.sync.get('commandPaletteQuickActions');
+  const config = result.commandPaletteQuickActions as QuickActionConfig | undefined;
+  return config ?? { hiddenBuiltInIds: [], customActions: [] };
+}
+
+export async function setQuickActionConfig(config: QuickActionConfig): Promise<void> {
+  await chrome.storage.sync.set({ commandPaletteQuickActions: config });
+}
+
+export async function resetQuickActionConfig(): Promise<void> {
+  await chrome.storage.sync.remove('commandPaletteQuickActions');
+}
+
 // Describe cache with TTL (1 hour) and max entries
 const CACHE_TTL = 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 25;

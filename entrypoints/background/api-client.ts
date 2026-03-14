@@ -560,6 +560,26 @@ function isDependencyError(error: string): boolean {
   return /depends on permission\(s\)|requires Read on at least one of these objects/i.test(error);
 }
 
+function extractDependencyObjects(error: string): string[] {
+  const objects: string[] = [];
+
+  // Pattern 1: "Permission Read Asset depends on permission(s): Read Account"
+  // May have multiple: "...depends on permission(s): Read Contact; ...depends on permission(s): Read Entitlement"
+  const dependsMatches = error.matchAll(/depends on permission\(s\):\s*(?:Read|Create|Edit|Delete|View All|Modify All)\s+(\w+)/gi);
+  for (const match of dependsMatches) {
+    if (match[1]) objects.push(match[1]);
+  }
+
+  // Pattern 2: "Read on ContactPointAddress requires Read on at least one of these objects: Account, Individual"
+  const requiresMatch = error.match(/requires Read on at least one of these objects:\s*(.+)/i);
+  if (requiresMatch?.[1]) {
+    const firstObject = requiresMatch[1].split(',')[0]?.trim();
+    if (firstObject) objects.push(firstObject);
+  }
+
+  return [...new Set(objects)];
+}
+
 function normalizePermissionSetPayload(data: {
   name: string;
   label: string;
@@ -862,15 +882,30 @@ export async function createPermissionSet(
         normalizedData.fieldPermissions,
       ),
     };
+    const validatedObjectPermissions = await validateObjectPermissions(
+      instanceUrl,
+      sessionId,
+      normalizedData.objectPermissions,
+      warnings,
+      onProgress,
+    );
+
+    // Remove field permissions for objects that were filtered out during object validation
+    const validObjectNames = new Set(validatedObjectPermissions.map((op) => op.object.toLowerCase()));
+    const filteredFieldPermissions = normalizedData.fieldPermissions.filter((fp) => {
+      if (validObjectNames.has(fp.sobjectType.toLowerCase())) return true;
+      warnings.push({
+        type: 'FieldPermission',
+        name: fp.field,
+        error: `Skipped because object ${fp.sobjectType} is not supported for ObjectPermissions in this org`,
+      });
+      return false;
+    });
+
     normalizedData = {
       ...normalizedData,
-      objectPermissions: await validateObjectPermissions(
-        instanceUrl,
-        sessionId,
-        normalizedData.objectPermissions,
-        warnings,
-        onProgress,
-      ),
+      objectPermissions: validatedObjectPermissions,
+      fieldPermissions: filteredFieldPermissions,
     };
 
     const totalPreparedPermissions =
@@ -905,11 +940,12 @@ export async function createPermissionSet(
     if (normalizedData.objectPermissions.length > 0) {
       onProgress?.(`Adding ${normalizedData.objectPermissions.length} Object Permissions...`);
     }
+    const createdObjects = new Set<string>();
     let pendingObjectPermissions = normalizedData.objectPermissions.map((permission) => ({
       permission,
       lastError: '',
     }));
-    const maxObjectPasses = Math.max(2, normalizedData.objectPermissions.length);
+    const maxObjectPasses = Math.max(5, normalizedData.objectPermissions.length);
 
     for (let pass = 1; pendingObjectPermissions.length > 0 && pass <= maxObjectPasses; pass++) {
       if (pass > 1) {
@@ -943,16 +979,49 @@ export async function createPermissionSet(
 
         if (opResponse.ok) {
           createdInPass++;
+          createdObjects.add(obj.object.toLowerCase());
           continue;
         }
 
         const error = await parseError(opResponse);
         if (isDuplicateInsertError(error)) {
           createdInPass++;
+          createdObjects.add(obj.object.toLowerCase());
           continue;
         }
 
         if (isDependencyError(error) && pass < maxObjectPasses) {
+          // Auto-resolve: extract required parent objects and inject them
+          const requiredParents = extractDependencyObjects(error);
+          for (const parentObject of requiredParents) {
+            const parentKey = parentObject.toLowerCase();
+            const alreadyPending = pendingObjectPermissions.some(
+              (p) => p.permission.object.toLowerCase() === parentKey,
+            ) || deferred.some(
+              (d) => d.permission.object.toLowerCase() === parentKey,
+            );
+
+            if (!createdObjects.has(parentKey) && !alreadyPending) {
+              // Auto-add parent with Read-only permission
+              deferred.unshift({
+                permission: {
+                  object: parentObject,
+                  allowRead: true,
+                  allowCreate: false,
+                  allowEdit: false,
+                  allowDelete: false,
+                  viewAllRecords: false,
+                  modifyAllRecords: false,
+                },
+                lastError: '',
+              });
+              warnings.push({
+                type: 'ObjectPermission',
+                name: parentObject,
+                error: `Auto-added Read permission on ${parentObject} (required by ${obj.object})`,
+              });
+            }
+          }
           deferred.push({ permission: obj, lastError: error });
           continue;
         }
@@ -967,6 +1036,8 @@ export async function createPermissionSet(
 
       if (createdInPass === 0 || pass === maxObjectPasses) {
         for (const deferredPermission of deferred) {
+          // Skip auto-added parents that were never attempted (empty lastError)
+          if (!deferredPermission.lastError) continue;
           failures.push({
             type: 'ObjectPermission',
             name: deferredPermission.permission.object,

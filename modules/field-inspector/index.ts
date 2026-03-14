@@ -5,78 +5,28 @@ import { showToast } from '../../lib/toast';
 import { tokens } from '../../lib/design-tokens';
 
 const BADGE_CLASS = 'sfboost-field-badge';
-const TOGGLE_ID = 'sfboost-inspector-toggle';
-let isActive = false;
+const LABEL_SELECTOR =
+  'span.test-id__field-label, ' +
+  '.slds-form-element__label:not(:has(span.test-id__field-label)), ' +
+  'records-record-layout-item span[class*="label"]:not(:has(span.test-id__field-label))';
+
+type FieldInfo = { apiName: string; type: string; required: boolean };
+
 let currentCtx: ModuleContext | null = null;
+let cachedObjectApiName: string | null = null;
+let cachedFieldMap: Map<string, FieldInfo> | null = null;
+let observer: MutationObserver | null = null;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let navigationGen = 0;
 
-function isShortcutEditableTarget(target: EventTarget | null): boolean {
-  const el = target instanceof HTMLElement ? target : null;
-  if (!el) return false;
-  if (el.closest(`#${TOGGLE_ID}`)) return false;
-  return el.isContentEditable || !!el.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
-}
+/* ── Fetch or reuse field map ──────────────────────────────── */
 
-function onToggleInspector() { toggleInspector(); }
-
-function createToggleButton() {
-  const existing = document.getElementById(TOGGLE_ID);
-  if (existing) return;
-
-  const btn = document.createElement('button');
-  btn.id = TOGGLE_ID;
-  btn.textContent = '{ }';
-  btn.title = 'Toggle Field Inspector (Alt+Shift+F)';
-  btn.setAttribute('style', `
-    position: fixed; bottom: ${tokens.space['2xl']}; right: ${tokens.space['2xl']};
-    width: 44px; height: 44px;
-    border-radius: ${tokens.radius.full};
-    border: none;
-    background: ${isActive ? tokens.color.primary : tokens.color.surfaceDark};
-    color: ${tokens.color.textOnPrimary};
-    font-size: ${tokens.font.size.lg}; font-weight: ${tokens.font.weight.bold};
-    cursor: pointer;
-    z-index: ${tokens.zIndex.fab};
-    box-shadow: ${tokens.shadow.md};
-    transition: background ${tokens.transition.slow}, transform ${tokens.transition.slow};
-    font-family: ${tokens.font.family.mono};
-  `);
-
-  btn.addEventListener('mouseenter', () => { btn.style.transform = 'scale(1.1)'; });
-  btn.addEventListener('mouseleave', () => { btn.style.transform = 'scale(1)'; });
-  btn.addEventListener('click', () => toggleInspector());
-
-  document.body.appendChild(btn);
-}
-
-async function toggleInspector() {
-  if (!isActive && (!currentCtx || currentCtx.pageContext.pageType !== 'record' || !currentCtx.pageContext.objectApiName)) {
-    showToast('Field Inspector works only on record pages', 'right');
-    return;
-  }
-
-  isActive = !isActive;
-  const btn = document.getElementById(TOGGLE_ID) as HTMLButtonElement | null;
-  if (btn) {
-    btn.style.background = isActive ? tokens.color.primary : tokens.color.surfaceDark;
-  }
-
-  if (isActive) {
-    const applied = await showFieldBadges();
-    if (!applied) {
-      isActive = false;
-      if (btn) btn.style.background = tokens.color.surfaceDark;
-    }
-  } else {
-    removeFieldBadges();
-  }
-}
-
-async function showFieldBadges(): Promise<boolean> {
-  if (!currentCtx) return false;
-  const { objectApiName, instanceUrl } = currentCtx.pageContext;
-  if (!objectApiName) {
-    showToast('No object detected on this page', 'right');
-    return false;
+async function getFieldMap(
+  instanceUrl: string,
+  objectApiName: string,
+): Promise<Map<string, FieldInfo> | null> {
+  if (objectApiName === cachedObjectApiName && cachedFieldMap) {
+    return cachedFieldMap;
   }
 
   let describeData: any;
@@ -84,43 +34,34 @@ async function showFieldBadges(): Promise<boolean> {
     describeData = await sendMessage('describeObject', { instanceUrl, objectApiName });
   } catch (e: any) {
     showToast(`Error: ${e.message}`, 'right');
-    return false;
+    return null;
   }
 
-  if (!describeData?.fields) {
-    showToast(`No describe metadata returned for ${objectApiName}`, 'right');
-    return false;
-  }
+  if (!describeData?.fields) return null;
 
-  // Build label -> field info map
-  const fieldMap = new Map<string, { apiName: string; type: string; required: boolean }>();
+  const map = new Map<string, FieldInfo>();
   for (const field of describeData.fields) {
-    const label = (field.label as string).toLowerCase().trim();
-    fieldMap.set(label, {
+    map.set((field.label as string).toLowerCase().trim(), {
       apiName: field.name as string,
       type: field.type as string,
       required: !field.nillable && !field.defaultedOnCreate,
     });
   }
 
-  // Find all field labels in the DOM.
-  // Use :has() to avoid selecting outer label elements that already contain
-  // a more specific inner span — prevents duplicate badges.
-  const labelElements = document.querySelectorAll(
-    'span.test-id__field-label, ' +
-    '.slds-form-element__label:not(:has(span.test-id__field-label)), ' +
-    'records-record-layout-item span[class*="label"]:not(:has(span.test-id__field-label))'
-  );
+  cachedObjectApiName = objectApiName;
+  cachedFieldMap = map;
+  return map;
+}
 
-  let matched = 0;
-  labelElements.forEach((el) => {
-    // Strip trailing *, :, and whitespace that Salesforce adds for required/formatting
+/* ── Apply badges to label elements that don't have one yet ── */
+
+function applyBadgesToDOM(fieldMap: Map<string, FieldInfo>) {
+  document.querySelectorAll(LABEL_SELECTOR).forEach((el) => {
+    if (el.querySelector(`.${BADGE_CLASS}`)) return;
+
     const labelText = (el.textContent ?? '').replace(/[\s*:]+$/, '').toLowerCase().trim();
     const fieldInfo = fieldMap.get(labelText);
     if (!fieldInfo) return;
-
-    // Skip if badge already exists
-    if (el.querySelector(`.${BADGE_CLASS}`)) return;
 
     const badge = document.createElement('span');
     badge.className = BADGE_CLASS;
@@ -161,64 +102,87 @@ async function showFieldBadges(): Promise<boolean> {
     });
 
     el.appendChild(badge);
-    matched++;
   });
-
-  showToast(`Matched ${matched} fields on ${objectApiName}`, 'right');
-  return true;
 }
+
+/* ── Main auto-apply flow ──────────────────────────────────── */
+
+async function applyBadges() {
+  if (!currentCtx) return;
+  const { objectApiName, instanceUrl } = currentCtx.pageContext;
+  if (!objectApiName) return;
+
+  const gen = navigationGen;
+  const fieldMap = await getFieldMap(instanceUrl, objectApiName);
+  if (!fieldMap || gen !== navigationGen) return;
+
+  applyBadgesToDOM(fieldMap);
+  startObserver(fieldMap);
+}
+
+/* ── MutationObserver for lazily-loaded sections ───────────── */
+
+function startObserver(fieldMap: Map<string, FieldInfo>) {
+  stopObserver();
+  observer = new MutationObserver(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => applyBadgesToDOM(fieldMap), 300);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function stopObserver() {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+}
+
+/* ── Cleanup ───────────────────────────────────────────────── */
 
 function removeFieldBadges() {
   document.querySelectorAll(`.${BADGE_CLASS}`).forEach((el) => el.remove());
 }
 
+/* ── Module definition ─────────────────────────────────────── */
+
 const fieldInspector: SFBoostModule = {
   id: 'field-inspector',
   name: 'Field Inspector',
-  description: 'Toggle to show API names next to field labels on record pages',
+  description: 'Automatically shows API names next to field labels on record pages',
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
     currentCtx = ctx;
     if (ctx.pageContext.pageType === 'record') {
-      createToggleButton();
+      applyBadges();
     }
-    document.addEventListener('sfboost:toggle-inspector', onToggleInspector);
-    document.addEventListener('keydown', handleKeydown);
   },
 
   async onNavigate(ctx: ModuleContext) {
     if (window.top !== window.self) return;
-    currentCtx = ctx;
+    navigationGen++;
+    stopObserver();
     removeFieldBadges();
-    isActive = false;
-
-    const existingBtn = document.getElementById(TOGGLE_ID);
+    currentCtx = ctx;
     if (ctx.pageContext.pageType === 'record') {
-      if (!existingBtn) createToggleButton();
-      const btn = document.getElementById(TOGGLE_ID) as HTMLButtonElement | null;
-      if (btn) btn.style.background = tokens.color.surfaceDark;
-    } else {
-      existingBtn?.remove();
+      applyBadges();
     }
   },
 
   destroy() {
     if (window.top !== window.self) return;
+    navigationGen++;
+    stopObserver();
     removeFieldBadges();
-    document.getElementById(TOGGLE_ID)?.remove();
-    document.removeEventListener('sfboost:toggle-inspector', onToggleInspector);
-    document.removeEventListener('keydown', handleKeydown);
-    isActive = false;
+    cachedFieldMap = null;
+    cachedObjectApiName = null;
+    currentCtx = null;
   },
 };
-
-function handleKeydown(e: KeyboardEvent) {
-  if (isShortcutEditableTarget(e.target)) return;
-  if (e.altKey && e.shiftKey && e.key === 'F') {
-    e.preventDefault();
-    toggleInspector();
-  }
-}
 
 registry.register(fieldInspector);

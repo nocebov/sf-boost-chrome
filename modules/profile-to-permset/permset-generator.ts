@@ -1,4 +1,4 @@
-import { sendMessage } from '../../lib/messaging';
+import { sendMessage, createPermissionSetViaPort } from '../../lib/messaging';
 import { escapeSoqlString } from '../../lib/salesforce-utils';
 import type {
   ObjectPermission,
@@ -40,12 +40,13 @@ function assertNonEmpty(value: string, field: string): string {
  * Create a Permission Set via the REST API with the given permissions.
  */
 export async function createPermSetViaApi(
-  params: PermSetCreationParams
+  params: PermSetCreationParams,
+  onProgress?: (message: string) => void,
 ): Promise<PermSetCreationResult> {
   const name = assertNonEmpty(params.name, 'Permission Set name');
   const label = assertNonEmpty(params.label, 'Permission Set label');
 
-  const result = await sendMessage('createPermissionSet', {
+  const result = await createPermissionSetViaPort({
     instanceUrl: params.instanceUrl,
     name,
     label,
@@ -75,7 +76,7 @@ export async function createPermSetViaApi(
       entityId: sea.SetupEntityId,
       entityType: sea.SetupEntityType,
     })),
-  });
+  }, onProgress ?? (() => {}));
 
   return {
     id: result.id,

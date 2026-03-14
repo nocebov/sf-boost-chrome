@@ -1,6 +1,6 @@
 # SF Boost Admin Packet
 
-Last updated: March 7, 2026
+Last updated: March 14, 2026
 
 ## Product summary
 
@@ -35,17 +35,17 @@ SF Boost is a Salesforce productivity toolkit for admins and developers. Its sin
 
 ## Feature capability map
 
-| Module | Default | Capability |
-|---|---|---|
-| Command Palette | enabled | Read-only. Setup navigation is local; Flow Search reads Salesforce metadata only after the user enters Flow Search mode. |
-| Field Inspector | enabled | Read-only. Reads describe metadata from the active org only after the user toggles the inspector. |
-| Quick Copy | enabled | UI-only. Copies visible values locally to the clipboard. |
-| Table Filter | enabled | UI-only. Filters already-rendered table rows in the browser. |
-| Environment Safeguard | enabled | UI-only. Displays an org badge and updates the browser-action badge. |
-| Dependency Inspector | disabled | Read-only. Queries Salesforce Tooling API only after the user clicks `Deep Scan`. |
-| Change Set Buddy | disabled | UI-only. Enhances Change Set pages already rendered in Salesforce. |
-| Profile to Permission Set | disabled | Write-capable. Creates a Permission Set in the same Salesforce org only after the user explicitly completes the wizard. |
-| Hide DevOps Center Bar | disabled | UI-only. Hides a native Salesforce UI bar only when the user enables the module. |
+| Module | Default | Access Level | Capability |
+|---|---|---|---|
+| Command Palette | enabled | write-capable | Read-only for navigation and metadata search (Profiles, Permission Sets, Flows, Apex Classes, Apex Triggers via SOQL/Tooling API). Write-capable for Toggle Debug Log (creates/deletes TraceFlag and DebugLevel in the active org). SOQL Query mode executes user-typed queries read-only. |
+| Field Inspector | enabled | read-only | Read-only. Reads describe metadata from the active org only after the user toggles the inspector on a record page. |
+| Quick Copy | enabled | ui-only | UI-only. Copies visible record IDs locally to the clipboard on record pages and list views. |
+| Table Filter | enabled | ui-only | UI-only. Filters already-rendered table rows in the browser. Auto-scrolls Lightning tables to hydrate lazy-loaded rows. Auto-selects max pagination on Classic pages. |
+| Environment Safeguard | enabled | ui-only | UI-only. Displays a color-coded org badge and updates the browser tab title prefix. Reads per-org customization from `chrome.storage.sync`. |
+| Dependency Inspector | disabled | read-only | Read-only. Queries Salesforce Tooling API (`MetadataComponentDependency`) only after the user clicks Deep Scan on an Object Manager field or Apex Class page. |
+| Change Set Buddy | disabled | ui-only | UI-only. Enhances Change Set pages already rendered in Salesforce with search, filter, and component type counters. |
+| Profile to Permission Set | disabled | write-capable | Write-capable. Reads profile permissions via SOQL and describe, then creates a Permission Set in the same Salesforce org only after the user explicitly completes the wizard and confirms creation. Includes validation, dependency resolution, and rollback on failure. |
+| Hide DevOps Center Bar | disabled | ui-only | UI-only. Hides the native DevOps Center navigation bar via CSS injection on all Salesforce pages when the user enables the module. |
 
 ## No external service
 

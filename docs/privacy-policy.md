@@ -1,6 +1,6 @@
 # SF Boost — Privacy Policy
 
-**Last updated: March 11, 2026**
+**Last updated: March 14, 2026**
 
 SF Boost ("the extension") is a Chrome browser extension for Salesforce administrators and developers. Its sole purpose is to improve day-to-day productivity within the native Salesforce user interface. The extension runs entirely inside the user's browser and communicates only with the Salesforce org the user already has open.
 
@@ -29,18 +29,24 @@ The extension reads the Salesforce `sid` session cookie **locally** using the Ch
 
 ### 2.2 Salesforce Page Content and DOM
 
-The extension's content script runs on Salesforce pages (`*.salesforce.com`, `*.my.salesforce.com`) to add UI enhancements: field labels, table filters, environment indicators, keyboard shortcuts, and setup helpers. No page content is transmitted outside the browser.
+The extension's content script runs on Salesforce pages (`*.salesforce.com`, `*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`) to add UI enhancements: field labels, table filters, environment indicators, keyboard shortcuts, copy buttons, and setup helpers. No page content is transmitted outside the browser.
 
 ### 2.3 Salesforce REST and Tooling API Responses
 
-Several features (Field Inspector, Deep Dependency Inspector, Profile to Permission Set) query the user's Salesforce org via the REST and Tooling APIs. Responses are used immediately to display information to the user or, in the case of object metadata, cached locally for up to one hour to reduce redundant network requests. No API response data is sent to developer-operated infrastructure.
+Several features query the user's Salesforce org via the REST and Tooling APIs:
+- **Field Inspector** reads object describe metadata.
+- **Command Palette** queries Profiles, Permission Sets, Flows, Apex Classes, and Apex Triggers for metadata search, and can toggle debug logs (creating/deleting TraceFlag and DebugLevel records).
+- **Deep Dependency Inspector** queries `MetadataComponentDependency` via the Tooling API.
+- **Profile to Permission Set** reads profile permissions and creates a new Permission Set with associated permission records.
+
+Responses are used immediately to display information to the user or, in the case of object metadata, cached locally for up to one hour to reduce redundant network requests. No API response data is sent to developer-operated infrastructure.
 
 ### 2.4 Extension Settings (`chrome.storage.sync`)
 
 The extension stores the following values in Chrome's synced storage so preferences are preserved across browser sessions and devices signed in to the same Chrome profile:
 
 - `enabledModules` — list of module IDs the user has toggled on or off
-- `orgSettings` — per-org UI preferences (e.g., environment label color)
+- `orgSettings` — per-org UI preferences (e.g., environment badge label, colors)
 - `storageVersion` — internal migration marker
 
 These values contain no personally identifiable information and no Salesforce data.
@@ -56,9 +62,9 @@ Salesforce object metadata (field names, types, labels) fetched by the Field Ins
 - Does **not** transmit any data — Salesforce content, API responses, session cookies, or settings — to any server controlled by the developer.
 - Does **not** collect, store, or process personally identifiable information (PII).
 - Does **not** use analytics services, crash reporting backends, tracking pixels, or ad networks.
-- Does **not** run on any website other than `*.salesforce.com` and `*.my.salesforce.com`.
+- Does **not** run on any website other than `*.salesforce.com`, `*.my.salesforce.com`, `*.lightning.force.com`, and `*.salesforce-setup.com`.
 - Does **not** access Salesforce orgs other than the one the user has open in the active tab.
-- Does **not** modify Salesforce data except when the user explicitly invokes the **Profile to Permission Set** feature, which creates a new permission set in the user's own org via the standard Salesforce REST API.
+- Does **not** modify Salesforce data except when the user explicitly invokes write-capable features: **Profile to Permission Set** (creates a new permission set) and **Command Palette Toggle Debug Log** (creates/deletes TraceFlag and DebugLevel records). Both operate only in the user's own org via the standard Salesforce REST and Tooling APIs.
 - Does **not** use remote code execution (no `eval`, no externally hosted scripts).
 
 ---

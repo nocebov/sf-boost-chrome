@@ -89,6 +89,53 @@ export async function sendMessage<T extends MessageType>(
   return response;
 }
 
+export function createPermissionSetViaPort(
+  data: MessageMap['createPermissionSet']['data'],
+  onProgress: (message: string) => void,
+): Promise<MessageMap['createPermissionSet']['response']> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const port = chrome.runtime.connect({ name: 'createPermissionSet' });
+
+    port.onMessage.addListener((msg: {
+      type: 'progress' | 'complete' | 'error';
+      message?: string;
+      result?: MessageMap['createPermissionSet']['response'];
+      error?: string;
+    }) => {
+      if (msg.type === 'progress' && msg.message) {
+        onProgress(msg.message);
+      } else if (msg.type === 'complete' && !settled) {
+        settled = true;
+        resolve(msg.result!);
+        port.disconnect();
+      } else if (msg.type === 'error' && !settled) {
+        settled = true;
+        reject(new Error(msg.error));
+        port.disconnect();
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error(
+          chrome.runtime.lastError?.message ||
+          'Background service worker disconnected unexpectedly',
+        ));
+      }
+    });
+
+    try {
+      port.postMessage({ data: normalizeMessageData<'createPermissionSet'>(data) });
+    } catch (e) {
+      settled = true;
+      port.disconnect();
+      reject(e);
+    }
+  });
+}
+
 function isTrustedSender(sender: chrome.runtime.MessageSender): boolean {
   if (sender.id && sender.id !== chrome.runtime.id) return false;
   if (sender.id === chrome.runtime.id && !sender.url && !sender.origin && !sender.tab?.url) {

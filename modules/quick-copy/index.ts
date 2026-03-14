@@ -151,7 +151,10 @@ function scheduleInject(attempts = 12, delay = 350) {
 // --- List view hover copy ---
 
 const LIST_COPY_CLASS = 'sfboost-list-copy';
+const LIST_STYLE_ID = 'sfboost-list-copy-style';
 let listDelegate: ((e: MouseEvent) => void) | null = null;
+let listObserver: MutationObserver | null = null;
+let listObserverDebounce: ReturnType<typeof setTimeout> | null = null;
 
 function extractRecordIdFromRow(row: HTMLTableRowElement): string | null {
   // Try data-row-key-value attribute (Lightning list views)
@@ -168,16 +171,107 @@ function extractRecordIdFromRow(row: HTMLTableRowElement): string | null {
   return null;
 }
 
-function injectListViewCopy(): void {
-  removeListViewCopy();
+function createListCopyIcon(recordId: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = LIST_COPY_CLASS;
+  btn.setAttribute('data-sfboost-rid', recordId);
+  btn.title = `Copy ID: ${recordId}`;
 
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const svgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  svgRect.setAttribute('x', '9');
+  svgRect.setAttribute('y', '9');
+  svgRect.setAttribute('width', '13');
+  svgRect.setAttribute('height', '13');
+  svgRect.setAttribute('rx', '2');
+  svgRect.setAttribute('ry', '2');
+  const svgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  svgPath.setAttribute('d', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1');
+  svg.append(svgRect, svgPath);
+  btn.appendChild(svg);
+
+  btn.setAttribute('style', `
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: ${tokens.radius.sm};
+    cursor: pointer;
+    color: ${tokens.color.textTertiary};
+    margin-left: ${tokens.space.sm};
+    vertical-align: middle;
+    padding: 0;
+    flex-shrink: 0;
+  `);
+
+  return btn;
+}
+
+/** Find the cell that contains the record name link and return it along with the anchor */
+function findNameCell(row: HTMLTableRowElement): { cell: HTMLElement; anchor: HTMLAnchorElement } | null {
+  // Try th[scope="row"] first (Lightning standard)
+  const th = row.querySelector<HTMLElement>('th[scope="row"]');
+  if (th) {
+    const a = th.querySelector<HTMLAnchorElement>('a[href*="/lightning/r/"]');
+    if (a) return { cell: th, anchor: a };
+  }
+
+  // Fallback: any td/th with a record link
+  const cells = row.querySelectorAll<HTMLElement>('td, th');
+  for (const cell of cells) {
+    const a = cell.querySelector<HTMLAnchorElement>('a[href*="/lightning/r/"]');
+    if (a) return { cell, anchor: a };
+  }
+
+  return null;
+}
+
+function injectCopyButtonForRow(row: HTMLTableRowElement): void {
+  if (row.querySelector(`.${LIST_COPY_CLASS}`)) return;
+  const recordId = extractRecordIdFromRow(row);
+  if (!recordId) return;
+
+  const nameCell = findNameCell(row);
+  if (!nameCell) return;
+
+  const btn = createListCopyIcon(recordId);
+  // Insert right after the anchor element
+  nameCell.anchor.parentElement?.insertBefore(btn, nameCell.anchor.nextSibling);
+}
+
+function ensureListStyles(): void {
+  if (document.getElementById(LIST_STYLE_ID)) return;
   const style = document.createElement('style');
-  style.className = LIST_COPY_CLASS;
+  style.id = LIST_STYLE_ID;
   style.textContent = `
-    tr[data-row-key-value] .${LIST_COPY_CLASS} { opacity: 0; transition: opacity 0.15s; }
-    tr[data-row-key-value]:hover .${LIST_COPY_CLASS} { opacity: 1; }
+    .${LIST_COPY_CLASS} {
+      opacity: 0.3;
+      transition: opacity ${tokens.transition.normal}, border-color ${tokens.transition.normal}, color ${tokens.transition.normal};
+    }
+    tr:hover .${LIST_COPY_CLASS},
+    tr[data-row-key-value]:hover .${LIST_COPY_CLASS} {
+      opacity: 1;
+    }
+    .${LIST_COPY_CLASS}:hover {
+      background: ${tokens.color.primaryLight} !important;
+      border-color: ${tokens.color.primary} !important;
+      color: ${tokens.color.primary} !important;
+    }
   `;
   document.head.appendChild(style);
+}
+
+function injectListViewCopy(): void {
+  removeListViewCopy();
+  ensureListStyles();
 
   listDelegate = (e: MouseEvent) => {
     const btn = (e.target as Element)?.closest(`.${LIST_COPY_CLASS}`) as HTMLElement | null;
@@ -197,36 +291,28 @@ function injectListViewCopy(): void {
 
   const rows = table.querySelectorAll<HTMLTableRowElement>('tr[data-row-key-value]');
   for (const row of rows) {
-    if (row.querySelector(`.${LIST_COPY_CLASS}`)) continue;
-    const recordId = extractRecordIdFromRow(row);
-    if (!recordId) continue;
-
-    const firstCell = row.querySelector('td');
-    if (!firstCell) continue;
-
-    const btn = document.createElement('button');
-    btn.className = `${LIST_COPY_CLASS}`;
-    btn.setAttribute('data-sfboost-rid', recordId);
-    btn.title = recordId;
-    btn.textContent = 'Copy ID';
-    btn.setAttribute('style', `
-      display: inline-flex; align-items: center; justify-content: center;
-      height: 22px; padding: 0 ${tokens.space.md};
-      background: ${tokens.color.primary}; color: ${tokens.color.textOnPrimary};
-      border: none; border-radius: ${tokens.radius.sm};
-      font-size: ${tokens.font.size.sm}; font-weight: ${tokens.font.weight.semibold};
-      cursor: pointer; white-space: nowrap;
-      margin-right: ${tokens.space.sm}; flex-shrink: 0;
-      transition: background ${tokens.transition.normal};
-    `);
-    btn.addEventListener('mouseenter', () => { btn.style.background = tokens.color.primaryHover; });
-    btn.addEventListener('mouseleave', () => { btn.style.background = tokens.color.primary; });
-    firstCell.insertBefore(btn, firstCell.firstChild);
+    injectCopyButtonForRow(row);
   }
+
+  // Observe table for new rows (e.g. after lazy-load hydration by table-filter)
+  const tbody = table.querySelector('tbody') ?? table;
+  listObserver = new MutationObserver(() => {
+    if (listObserverDebounce) clearTimeout(listObserverDebounce);
+    listObserverDebounce = setTimeout(() => {
+      listObserverDebounce = null;
+      const newRows = table.querySelectorAll<HTMLTableRowElement>('tr[data-row-key-value]');
+      for (const row of newRows) {
+        injectCopyButtonForRow(row);
+      }
+    }, 300);
+  });
+  listObserver.observe(tbody, { childList: true, subtree: true });
 }
 
 function removeListViewCopy(): void {
-  document.querySelectorAll(`style.${LIST_COPY_CLASS}`).forEach(el => el.remove());
+  if (listObserver) { listObserver.disconnect(); listObserver = null; }
+  if (listObserverDebounce) { clearTimeout(listObserverDebounce); listObserverDebounce = null; }
+  document.getElementById(LIST_STYLE_ID)?.remove();
   document.querySelectorAll(`.${LIST_COPY_CLASS}`).forEach(el => el.remove());
   if (listDelegate) {
     document.removeEventListener('click', listDelegate, true);

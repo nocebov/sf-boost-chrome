@@ -2,7 +2,7 @@
 
 **SF Boost** is a Chrome Extension focused on one job: making everyday Salesforce admin and developer work faster inside the native UI.
 
-> **Version 0.2.0** · Built with [WXT](https://wxt.dev/) · TypeScript · Bun
+> **Version 0.3.0** · Built with [WXT](https://wxt.dev/) · TypeScript · Bun
 
 ---
 
@@ -10,14 +10,21 @@
 
 ### Command Palette `Alt+Shift+S`
 
-Jump anywhere in Setup without clicking through menus.
+Jump anywhere in Setup — or search Salesforce metadata — without clicking through menus.
 
 Press `Alt+Shift+S`, start typing, hit Enter. Works for:
-- **Setup pages** — Users, Profiles, Roles, Permission Sets, Object Manager, Picklist Value Sets, Fields, Apex Classes, Triggers, LWC, Visualforce, Debug Logs, Developer Console, and more
-- **Flow Search** — type `Find Flow` to switch to Flow Search mode and search across all flows in the org (up to 2000 loaded, with flow type labels: Screen Flow, Autolaunched, Scheduled, etc.)
-- **Quick Actions** — easily copy your current Record ID or current Page URL.
+- **70+ Setup pages** — Users, Profiles, Roles, Permission Sets, Object Manager, Picklist Value Sets, Fields, Apex Classes, Triggers, LWC, Visualforce, Debug Logs, Developer Console, Reports, Dashboards, and more
+- **Quick Actions** — copy your current Record ID or Page URL directly from the palette
+- **Quick Action pills** (press number keys `1`–`7` on empty input):
+  1. **Profile Search** — SOQL-powered search across all Profiles
+  2. **Permission Set Search** — search across all custom Permission Sets
+  3. **Flow Search** — search across all flows with type labels (Screen Flow, Autolaunched, Scheduled, etc.)
+  4. **Apex Class Search** — Tooling API search across all Apex Classes
+  5. **Apex Trigger Search** — Tooling API search across all Apex Triggers
+  6. **Toggle Debug Log** — enable/disable a 30-minute FINEST debug log for the current user
+  7. **SOQL Query** — type and run ad-hoc SOQL queries, click a result to copy its ID
 
-Navigate with arrow keys, confirm with Enter, close with Escape.
+Navigate with arrow keys, confirm with Enter, close with Escape. Backspace on empty input exits a sub-mode.
 
 ---
 
@@ -31,9 +38,10 @@ Press `Alt+Shift+F` or click the `{ }` button in the bottom-right corner. Blue A
 
 ### Quick Copy
 
-One-click copy of the 18-character Record ID on any record page.
+One-click copy of Record IDs on record pages and list views.
 
-A small clipboard icon appears next to the record title or header — click it and the ID is in your clipboard. No more wrestling with URL bars.
+- **Record pages** — a small clipboard icon appears next to the record header. Click it and the 18-character ID is in your clipboard.
+- **List views** — a "Copy ID" pill appears on row hover. Click it to copy that row's record ID.
 
 ---
 
@@ -41,7 +49,9 @@ A small clipboard icon appears next to the record title or header — click it a
 
 Instant search over any Salesforce table — Setup lists, List Views, Classic tables.
 
-A search bar is automatically injected above supported tables. Type to filter rows in real-time (no page reload). Supports multi-term search (space-separated terms, all must match). Shows a live `filtered / total` row count. Clear with the × button or Escape key.
+A search bar is automatically injected above supported tables. Type to filter rows in real-time (no page reload). Supports multi-term search (space-separated terms, all must match). Shows a live `filtered / total` row count. Clear with the × button or Escape key. Matched text is highlighted in yellow.
+
+**Smart row loading:** On Lightning tables with lazy-loaded rows, Table Filter automatically scrolls the container to hydrate all rows before filtering. On Classic pages with pagination, it auto-selects the maximum "records per page" option.
 
 ---
 
@@ -52,12 +62,12 @@ A color-coded badge in the top-left corner that tells you exactly which org you'
 | Environment | Color |
 |---|---|
 | Production | Red |
-| Sandbox | Green |
-| Developer | Blue |
-| Scratch | Purple |
-| Trailhead | Teal |
+| Sandbox | Orange / Amber |
+| Developer | Green |
+| Scratch | Teal / Cyan |
+| Trailhead | Purple |
 
-Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, etc.). Supports custom labels and colors per org.
+Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, `[DEV]`, `[SCRATCH]`, `[TRAIL]`). Supports custom labels, badge colors, and text colors per org via `chrome.storage.sync`. The badge is automatically hidden on Flow Builder pages to avoid canvas overlap.
 
 ---
 
@@ -65,13 +75,13 @@ Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]
 
 Extract permissions from any Profile and create a new Permission Set — without writing a single line of code.
 
-Open any Profile page and click **"Extract to Permission Set"**. A wizard walks you through:
+Open any Profile page (Enhanced or Classic) and click **"Extract to Permission Set"**. A wizard walks you through:
 
-1. **Select permission categories** to include — Object Permissions, Field Permissions, User/System Permissions, Tab Settings, Apex Class Access, Visualforce Page Access, Custom Permissions
-2. **Pick or deselect individual items** within each category (Select All / Select None per group)
-3. **Name your Permission Set** and create it via API with real-time progress
-
-On success, a direct link opens the new Permission Set. Duplicate name detection included.
+1. **Loading** — reads all profile permissions in parallel (objects, fields, user perms, tabs, Apex/VF/Custom access)
+2. **Selection** — shows a summary of the profile (name, counts). Each permission type gets a collapsible section with Select All and individual checkboxes. Permission flags displayed inline (R/C/E/D/VA/MA for objects; Read/Edit for fields; visibility for tabs)
+3. **Name** — pre-filled with `{ProfileName}_Extracted`, validates API naming rules, checks for duplicate names via Tooling API
+4. **Execution** — a 10-stage progress view with live status: Prepare → Validate Fields → Validate Objects → Create PermSet → Apply Object Access → Apply Field Access → Apply User Permissions → Apply Tabs → Apply Setup Access → Finish
+5. **Result** — success/failure banner with a direct link to the new Permission Set. Notices grouped by type (converted to read-only, missing fields, non-permissionable, auto-resolved dependencies, etc.). Export options: **Copy for Excel** (tab-separated) and **Download CSV**
 
 > Disabled by default — enable in the extension popup.
 
@@ -81,7 +91,7 @@ On success, a direct link opens the new Permission Set. Duplicate name detection
 
 Find where an Object Manager field or Apex class is used across the org without writing SOQL.
 
-On Object Manager field pages or Apex Class pages, a **"Deep Scan"** button appears. Click it to query `MetadataComponentDependency` via the Tooling API. Results are grouped by component type (Flows, Apex Classes, Triggers, LWC, etc.) with icons and counts. Copy individual items or all dependencies at once.
+On Object Manager field pages or Apex Class pages, a **"Deep Scan"** button appears. Click it to query `MetadataComponentDependency` via the Tooling API. Results are displayed in a modal, grouped by component type (Flows, Apex Classes, Triggers, LWC, Validation Rules, Layouts, FlexiPages, etc.) with icons and counts. Sections are collapsible. Click an item to copy its name; use "Copy All" for the full list.
 
 > Disabled by default — enable in the extension popup.
 
@@ -91,7 +101,7 @@ On Object Manager field pages or Apex Class pages, a **"Deep Scan"** button appe
 
 Filter large Change Set component lists without scrolling.
 
-On Outbound/Inbound Change Set pages, a search bar is injected above the component table. Supports multi-term search and shows a summary of matched component types (e.g. `3 FlowDefinition, 2 ApexClass`).
+On Outbound/Inbound Change Set pages, a search bar is injected above the component table. Supports multi-term search and shows a live `filtered / total` item count. A **component type counter** displays the top 3 component types and their counts (e.g. `5 ApexClass, 3 CustomObject, 2 ValidationRule`). Matched text is highlighted in yellow.
 
 > Disabled by default — enable in the extension popup.
 
@@ -99,11 +109,11 @@ On Outbound/Inbound Change Set pages, a search bar is injected above the compone
 
 ### Hide DevOps Bar
 
-Removes the DevOps Center navigation bar from Setup pages if you don't use it.
+Removes the DevOps Center navigation bar from all Salesforce pages if you don't use it.
 
 > Disabled by default — enable in the extension popup when you explicitly want it.
 
-Once enabled, the bar disappears on supported Setup pages and stays hidden across SPA navigations.
+Once enabled, the bar is hidden via CSS injection and stays hidden across SPA navigations. A MutationObserver catches dynamically added DevOps bar elements.
 
 ---
 
@@ -156,7 +166,7 @@ Store submission artifacts:
 - **[WXT](https://wxt.dev/)** — Chrome Extension framework with HMR
 - **TypeScript** — full type safety across all modules
 - **Bun** — fast package manager and runtime
-- **Salesforce REST & Tooling APIs** — for Flow Search, Dependency Inspector, and Profile extraction
+- **Salesforce REST & Tooling APIs** — for metadata search, Debug Log toggle, Dependency Inspector, and Profile extraction
 
 ---
 

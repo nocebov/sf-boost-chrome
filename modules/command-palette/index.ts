@@ -5,6 +5,13 @@ import { fuzzySearch } from './search-engine';
 import { sendMessage } from '../../lib/messaging';
 import { tokens } from '../../lib/design-tokens';
 import { showToast } from '../../lib/toast';
+import {
+  loadQuickActions,
+  renderQuickActionBar,
+  showAddCustomActionForm,
+  type QuickAction,
+} from './quick-actions';
+import { getQuickActionConfig, setQuickActionConfig } from '../../lib/storage';
 
 const PALETTE_ID = 'sfboost-command-palette';
 
@@ -101,7 +108,7 @@ function apexClassesToCommands(classes: ApexClassRecord[]): PaletteCommand[] {
     label: cls.Name,
     keywords: [cls.Name, cls.NamespacePrefix ?? '', `v${cls.ApiVersion}`],
     category: `${cls.Status} \u00b7 v${cls.ApiVersion}${cls.NamespacePrefix ? ` \u00b7 ${cls.NamespacePrefix}` : ''} \u00b7 ${cls.LengthWithoutComments} chars`,
-    path: `/${cls.Id}`,
+    path: `/lightning/setup/ApexClasses/page?address=%2F${cls.Id}`,
     icon: cls.Status === 'Active' ? '\u{1F4BB}' : '\u{1F6AB}',
   }));
 }
@@ -121,7 +128,7 @@ function apexTriggersToCommands(triggers: ApexTriggerRecord[]): PaletteCommand[]
     label: trg.Name,
     keywords: [trg.Name, trg.TableEnumOrId, trg.NamespacePrefix ?? '', `v${trg.ApiVersion}`],
     category: `${trg.TableEnumOrId} \u00b7 ${trg.Status} \u00b7 v${trg.ApiVersion}${trg.NamespacePrefix ? ` \u00b7 ${trg.NamespacePrefix}` : ''}`,
-    path: `/${trg.Id}`,
+    path: `/lightning/setup/ApexTriggers/page?address=%2F${trg.Id}`,
     icon: trg.Status === 'Active' ? '\u{2699}' : '\u{1F6AB}',
   }));
 }
@@ -237,61 +244,69 @@ function createPaletteUI() {
   const quickActionBar = document.createElement('div');
   quickActionBar.setAttribute('style', `
     display: flex;
+    align-items: center;
     gap: ${tokens.space.sm};
     padding: ${tokens.space.md} ${tokens.space.xl};
     border-bottom: 1px solid ${tokens.color.borderDefault};
     flex-wrap: wrap;
   `);
 
-  interface QuickAction {
-    key: string;
-    label: string;
-    subMode?: string;
-    actionId?: string;
+  let activeQuickActions: QuickAction[] = [];
+  let editMode = false;
+
+  function activateQuickAction(qa: QuickAction) {
+    if (qa.subMode) {
+      enterSubModeByName(qa.subMode);
+    } else if (qa.actionId === 'toggle-debug-log') {
+      handleToggleDebugLog();
+    } else if (qa.customUrl) {
+      closePalette();
+      window.location.href = qa.customUrl;
+    }
   }
 
-  const quickActions: QuickAction[] = [
-    { key: '1', label: 'Profile', subMode: 'profile-search' },
-    { key: '2', label: 'PermSet', subMode: 'permset-search' },
-    { key: '3', label: 'Flow', subMode: 'flow-search' },
-    { key: '4', label: 'Class', subMode: 'apex-class-search' },
-    { key: '5', label: 'Trigger', subMode: 'apex-trigger-search' },
-    { key: '6', label: 'Debug', actionId: 'toggle-debug-log' },
-    { key: '7', label: 'SOQL', subMode: 'soql-query' },
-  ];
-
-  for (const qa of quickActions) {
-    const pill = document.createElement('button');
-    pill.setAttribute('style', `
-      padding: ${tokens.space.xs} ${tokens.space.lg};
-      border: 1px solid ${tokens.color.borderDefault};
-      border-radius: ${tokens.radius.pill};
-      background: ${tokens.color.surfaceBase};
-      color: ${tokens.color.textSecondary};
-      font-size: ${tokens.font.size.sm};
-      font-family: ${tokens.font.family.sans};
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background ${tokens.transition.fast}, border-color ${tokens.transition.fast};
-    `);
-    pill.textContent = `${qa.key}\u00b7${qa.label}`;
-    pill.addEventListener('mouseenter', () => {
-      pill.style.background = tokens.color.surfaceSelected;
-      pill.style.borderColor = tokens.color.primaryBorder;
-    });
-    pill.addEventListener('mouseleave', () => {
-      pill.style.background = tokens.color.surfaceBase;
-      pill.style.borderColor = tokens.color.borderDefault;
-    });
-    pill.addEventListener('click', () => {
-      if (qa.subMode) {
-        enterSubModeByName(qa.subMode);
-      } else if (qa.actionId === 'toggle-debug-log') {
-        handleToggleDebugLog();
-      }
-    });
-    quickActionBar.appendChild(pill);
+  async function refreshQuickActions() {
+    activeQuickActions = await loadQuickActions();
+    renderQuickActionBar(
+      quickActionBar,
+      activeQuickActions,
+      activateQuickAction,
+      () => {
+        editMode = !editMode;
+        if (editMode) {
+          renderMessage('Edit quick actions: delete, add, or reset to defaults');
+        } else {
+          renderResults(SETUP_COMMANDS.slice(0, 10));
+        }
+        refreshQuickActions();
+      },
+      editMode,
+    );
   }
+
+  quickActionBar.addEventListener('sfboost:qa-config-changed', () => {
+    refreshQuickActions();
+  });
+
+  quickActionBar.addEventListener('sfboost:qa-show-add-form', () => {
+    showAddCustomActionForm(
+      results,
+      async (newAction) => {
+        const config = await getQuickActionConfig();
+        config.customActions.push(newAction);
+        await setQuickActionConfig(config);
+        showToast('Custom action added');
+        await refreshQuickActions();
+        renderResults(SETUP_COMMANDS.slice(0, 10));
+      },
+      () => {
+        renderResults(SETUP_COMMANDS.slice(0, 10));
+      },
+    );
+  });
+
+  // Load quick actions async (resolves near-instantly)
+  refreshQuickActions();
 
   card.appendChild(subModeHeader);
   card.appendChild(quickActionBar);
@@ -807,16 +822,11 @@ function createPaletteUI() {
         const cmd = currentCommands[selectedIndex];
         if (cmd) executeCommand(cmd);
       }
-    } else if (mode === 'commands' && input.value === '' && /^[1-7]$/.test(e.key)) {
-      const index = parseInt(e.key, 10) - 1;
-      const qa = quickActions[index];
-      if (qa) {
+    } else if (mode === 'commands' && input.value === '' && /^[1-9]$/.test(e.key)) {
+      const matched = activeQuickActions.find((qa) => qa.key === e.key);
+      if (matched) {
         e.preventDefault();
-        if (qa.subMode) {
-          enterSubModeByName(qa.subMode);
-        } else if (qa.actionId === 'toggle-debug-log') {
-          handleToggleDebugLog();
-        }
+        activateQuickAction(matched);
       }
     }
   });

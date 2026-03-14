@@ -22,7 +22,7 @@ SF Boost is a Chrome Extension (MV3) built with [WXT](https://wxt.dev/), TypeScr
 ### Entry Points
 
 - **`entrypoints/content/index.ts`** — Content script injected into all Salesforce pages. Imports all modules (triggering self-registration), initializes enabled ones, and patches the History API for SPA navigation detection.
-- **`entrypoints/background/index.ts`** — Service worker. Handles all Salesforce API calls (REST, Tooling) via the `onMessage` bridge; retrieves sessions from the `sid` cookie.
+- **`entrypoints/background/index.ts`** — Service worker. Handles all Salesforce API calls (REST, Tooling) via the `onMessage` bridge; retrieves sessions from the `sid` cookie. Also handles storage migration on install, Chrome command shortcuts (`show-command-palette`, `toggle-field-inspector`), badge updates, and long-lived port connections for permission set creation.
 - **`entrypoints/popup/main.ts`** — Extension popup for toggling modules on/off. Writes to `chrome.storage.sync`.
 
 ### Module System
@@ -40,42 +40,53 @@ interface SFBoostModule {
 }
 ```
 
+The `ModuleContext` wraps an `SFPageContext` containing: `url`, `orgType`, `myDomain`, `sandboxName`, `pageType`, `objectApiName`, `recordId`, `instanceUrl`.
+
 Modules **self-register** by calling `registry.register(module)` at the bottom of their `index.ts` file. The import in the content script's `index.ts` is what triggers registration.
 
-The `ModuleRegistry` (`modules/registry.ts`) manages lifecycle: `initModules` initializes enabled modules, `onNavigate` propagates URL changes, and `disableModule`/`enableModule` allow runtime toggling.
+The `ModuleRegistry` (`modules/registry.ts`) manages lifecycle: `initModules` initializes enabled modules, `onNavigate` propagates URL changes, and `disableModule`/`enableModule` allow runtime toggling. Each module's `init()` is wrapped in try/catch so one module failing does not take down others.
+
+### Module Catalog
+
+`modules/catalog.ts` defines `ModuleCatalogEntry` with `id`, `name`, `description`, `info`, `defaultEnabled`, and `accessLevel` (one of `ui-only`, `read-only`, `write-capable`). Exports the `MODULE_CATALOG` array plus `DEFAULT_ENABLED_MODULE_IDS` and `DISABLED_BY_DEFAULT_MODULE_IDS`.
 
 ### Lib Utilities
 
-- **`lib/messaging.ts`** — Type-safe content↔background messaging. `sendMessage(type, data)` from content; `onMessage(type, handler)` in background. All message types are defined in `MessageMap`.
-- **`lib/storage.ts`** — `chrome.storage.sync` for enabled module IDs and per-org settings; `chrome.storage.local` for object describe cache (1-hour TTL, max 25 entries). Default-enabled modules come from `modules/catalog.ts`.
-- **`lib/salesforce-urls.ts`** — Detects org type (production/sandbox/developer/scratch/trailhead) from hostname; parses Lightning URL path into `PageType` and extracts `objectApiName`/`recordId`.
+- **`lib/messaging.ts`** — Type-safe content↔background messaging. `sendMessage(type, data)` from content; `onMessage(type, handler)` in background. All message types are defined in `MessageMap`: `getSession`, `describeObject`, `executeSOQL`, `executeSOQLAll`, `executeToolingQuery`, `toggleDebugLog`, `createPermissionSet`. Instance URLs are validated via `assertAllowedSalesforceInstanceUrl`. Sender trust is verified via `isTrustedSender()`. A separate `createPermissionSetViaPort` function uses `chrome.runtime.connect()` for long-lived port communication with progress/complete/error messages.
+- **`lib/storage.ts`** — `chrome.storage.sync` for enabled module IDs (validated against known IDs) and per-org `OrgSettings` (label, banner/badge colors, badge text, show/hide flags); `chrome.storage.local` for object describe cache (1-hour TTL, max 25 entries). Default-enabled modules come from `modules/catalog.ts`.
+- **`lib/salesforce-urls.ts`** — `detectOrgType()` identifies org type (production/sandbox/developer/scratch/trailhead) from hostname. `buildInstanceUrl()` converts `lightning.force.com` and `salesforce-setup.com` hostnames to `my.salesforce.com` for API calls. `parseLightningUrl()` returns `PageType` (record, list, setup, home, app, flow-builder, change-set, other) and optionally `objectApiName`/`recordId`.
 - **`lib/design-tokens.ts`** — Single source of truth for all visual values (colors, fonts, spacing, radii, shadows, z-indices, transitions). All modules and shared components import `tokens` from here. The popup CSS uses matching CSS custom properties (`--sfb-*`).
 - **`lib/ui-helpers.ts`** — Shared DOM utilities: `createModal`, `createSpinner`, `createButton`, `createInput`, `createBadge`, `createFilterBar`. All styled via design tokens.
 - **`lib/toast.ts`** — Toast notification helper. Styled via design tokens.
 
 ### Background API Layer
 
-`entrypoints/background/api-client.ts` makes all Salesforce HTTP calls (API version `v62.0`):
-- `describeObject` — REST describe with cache
-- `executeSOQL` / `executeSOQLAll` — SOQL with auto-pagination
-- `executeToolingQueryAll` — Tooling API with auto-pagination
-- `createPermissionSet` — Multi-step REST creation with progress callbacks
+`entrypoints/background/api-client.ts` makes all Salesforce HTTP calls (API version `v63.0`):
+- `fetchWithRetry` — 30s timeout, up to 3 retries with exponential backoff for GET/HEAD/OPTIONS on status 408/429/503
+- `dedup` — request deduplication for inflight requests
+- `describeObject` — REST describe with local cache integration
+- `executeSOQL` / `executeSOQLAll` — SOQL with auto-pagination (up to 50,000 records)
+- `executeToolingQuery` / `executeToolingQueryAll` — Tooling API queries with same pagination
+- `getCurrentUserId` — extracts user ID from the identity endpoint
+- `toolingCreate` / `toolingDelete` — Tooling API DML operations
+- `toggleDebugLog` — checks for existing active TraceFlag, deletes if found, otherwise creates a 30-minute FINEST trace flag using DebugLevel `SFBoost_Debug`
+- `createPermissionSet` — Multi-step REST creation with validation, dependency resolution (auto-adds parent object Read permissions), rollback on failure, and progress callbacks. Steps: validate field permissions, validate object permissions, create PermissionSet, add ObjectPermissions (multi-pass), FieldPermissions, UserPermissions (single PATCH), TabSettings, SetupEntityAccess. Handles duplicate insert errors gracefully.
 
 Authentication uses the `sid` cookie read via `chrome.cookies` in `session-manager.ts`.
 
 ### Module Overview
 
-| Module ID | Default | Location |
-|---|---|---|
-| `command-palette` | enabled | `modules/command-palette/` |
-| `field-inspector` | enabled | `modules/field-inspector/` |
-| `quick-copy` | enabled | `modules/quick-copy/` |
-| `table-filter` | enabled | `modules/table-filter/` |
-| `environment-safeguard` | enabled | `modules/environment-safeguard/` |
-| `deep-dependency-inspector` | disabled | `modules/deep-dependency-inspector/` |
-| `hide-devops-bar` | disabled | `modules/hide-devops-bar/` |
-| `change-set-buddy` | disabled | `modules/change-set-buddy/` |
-| `profile-to-permset` | disabled | `modules/profile-to-permset/` |
+| Module ID | Default | Access Level | Location |
+|---|---|---|---|
+| `command-palette` | enabled | write-capable | `modules/command-palette/` |
+| `field-inspector` | enabled | read-only | `modules/field-inspector/` |
+| `quick-copy` | enabled | ui-only | `modules/quick-copy/` |
+| `table-filter` | enabled | ui-only | `modules/table-filter/` |
+| `environment-safeguard` | enabled | ui-only | `modules/environment-safeguard/` |
+| `deep-dependency-inspector` | disabled | read-only | `modules/deep-dependency-inspector/` |
+| `hide-devops-bar` | disabled | ui-only | `modules/hide-devops-bar/` |
+| `change-set-buddy` | disabled | ui-only | `modules/change-set-buddy/` |
+| `profile-to-permset` | disabled | write-capable | `modules/profile-to-permset/` |
 
 ### SPA Navigation
 
@@ -87,7 +98,7 @@ The content script patches `history.pushState`/`history.replaceState` and listen
 2. Implement `SFBoostModule` and call `registry.register(module)` at the end
 3. Import it in `entrypoints/content/index.ts`
 4. Add the module metadata entry to `MODULE_CATALOG` in `modules/catalog.ts`
-5. Decide the `defaultEnabled` value in `modules/catalog.ts` because that file is the source of truth for defaults shown in the popup and storage
+5. Decide the `defaultEnabled` and `accessLevel` values in `modules/catalog.ts` because that file is the source of truth for defaults shown in the popup and storage
 
 ### Design Tokens
 

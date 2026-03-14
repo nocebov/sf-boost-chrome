@@ -2,7 +2,7 @@
   "name": "sf-boost-chrome",
   "description": "Salesforce productivity toolkit for admins and developers",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

@@ -630,12 +630,21 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     };
   }
 
-  if (error.includes('not allowed by objectpermissions')) {
+  if (error.includes('not allowed by objectpermissions') || error.includes('is not supported for objectpermissions')) {
     return {
       key: 'unsupported-object',
       title: 'Unsupported Object Permissions',
       description: 'These object types cannot receive Object Permissions in this org, so they were skipped before insert.',
       tone: 'warning',
+    };
+  }
+
+  if (error.includes('auto-added read permission')) {
+    return {
+      key: 'auto-resolved-dependency',
+      title: 'Auto-Resolved Dependencies',
+      description: 'Read permissions were automatically added for parent objects required by other objects in the set (e.g., Account is required by Asset).',
+      tone: 'neutral',
     };
   }
 
@@ -1236,17 +1245,6 @@ function renderSelectionStep(
     card.appendChild(executionView.root);
     updateExecutionStages(executionView, 'prepare', 'running');
 
-    const progressListener = (msg: any) => {
-      if (msg.type === 'sfboost-progress' && msg.message) {
-        const message = String(msg.message);
-        const stageId = inferExecutionStage(message);
-        executionView.statusText.textContent = message;
-        updateActiveStageDescription(executionView, stageId, message);
-        updateExecutionStages(executionView, stageId, 'running');
-      }
-    };
-    chrome.runtime.onMessage.addListener(progressListener);
-
     try {
       const result = await createPermSetViaApi({
         instanceUrl,
@@ -1257,6 +1255,11 @@ function renderSelectionStep(
         userPermissions: usrPerms,
         tabSettings: tabPerms,
         setupEntityAccess: seaPerms,
+      }, (message) => {
+        const stageId = inferExecutionStage(message);
+        executionView.statusText.textContent = message;
+        updateActiveStageDescription(executionView, stageId, message);
+        updateExecutionStages(executionView, stageId, 'running');
       });
 
       executionView.statusText.textContent = result.success
@@ -1287,7 +1290,6 @@ function renderSelectionStep(
         summary,
       );
     } finally {
-      chrome.runtime.onMessage.removeListener(progressListener);
     }
   });
 

@@ -293,7 +293,9 @@ function getExpectedRowCount(table: HTMLTableElement): number | null {
 function getRowText(row: HTMLTableRowElement): string {
   let text = rowTextCache.get(row);
   if (text == null) {
-    text = (row.textContent ?? '').toLowerCase();
+    const clone = row.cloneNode(true) as HTMLTableRowElement;
+    clone.querySelectorAll('[class*="sfboost-"]').forEach(el => el.remove());
+    text = (clone.textContent ?? '').toLowerCase();
     rowTextCache.set(row, text);
   }
   return text;
@@ -601,6 +603,46 @@ function refreshManagedTables(): void {
   });
 }
 
+// --- Classic Pagination Auto-Expand ---
+
+/**
+ * Auto-select the maximum "records per page" in Classic Salesforce pagination.
+ * After change the page reloads; on reload the select is already at max → no-op.
+ */
+function autoExpandClassicPagination(): void {
+  for (const select of document.querySelectorAll<HTMLSelectElement>('select')) {
+    const options = Array.from(select.options);
+    const nums = options.filter(o => /^\d+$/.test(o.text.trim()));
+    if (nums.length < 3) continue;
+
+    const values = nums.map(o => parseInt(o.text.trim(), 10));
+    if (!values.some(v => [25, 50, 100, 200].includes(v))) continue;
+
+    // Walk up ancestors to verify this is a pagination select
+    let isPagination = false;
+    let el: HTMLElement | null = select.parentElement;
+    for (let i = 0; i < 4 && el; i++, el = el.parentElement) {
+      const t = (el.textContent ?? '').toLowerCase();
+      if (t.includes('per page') || (t.includes('display') && t.includes('records'))) {
+        isPagination = true;
+        break;
+      }
+    }
+    if (!isPagination) continue;
+
+    const maxVal = Math.max(...values);
+    const maxOpt = nums.find(o => parseInt(o.text.trim(), 10) === maxVal);
+    if (!maxOpt) continue;
+
+    const maxIdx = options.indexOf(maxOpt);
+    if (select.selectedIndex === maxIdx) continue;
+
+    select.selectedIndex = maxIdx;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return; // page will reload with expanded rows
+  }
+}
+
 // --- Injection ---
 
 function injectFilter(detected: DetectedTable): void {
@@ -680,12 +722,13 @@ const tableFilter: SFBoostModule = {
 
   async init(ctx: ModuleContext) {
     const { pageType } = ctx.pageContext;
-    if (pageType === 'setup' || pageType === 'list') {
-      initTimer = setTimeout(() => {
+    initTimer = setTimeout(() => {
+      autoExpandClassicPagination();
+      if (pageType === 'setup' || pageType === 'list') {
         scanAndInject();
         startObserver();
-      }, 1500);
-    }
+      }
+    }, 1500);
   },
 
   async onNavigate(ctx: ModuleContext) {
@@ -697,12 +740,13 @@ const tableFilter: SFBoostModule = {
     }
 
     const { pageType } = ctx.pageContext;
-    if (pageType === 'setup' || pageType === 'list') {
-      initTimer = setTimeout(() => {
+    initTimer = setTimeout(() => {
+      autoExpandClassicPagination();
+      if (pageType === 'setup' || pageType === 'list') {
         scanAndInject();
         startObserver();
-      }, 1500);
-    }
+      }
+    }, 1500);
   },
 
   destroy() {

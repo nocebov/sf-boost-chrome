@@ -1,6 +1,6 @@
 # SF Boost Support
 
-Last updated: March 7, 2026
+Last updated: March 14, 2026
 
 ## Support channels
 
