@@ -23,13 +23,15 @@ export default defineConfig({
         128: 'icon-128.png',
       },
     },
-    permissions: ['storage', 'cookies'],
+    permissions: ['storage', 'cookies', 'scripting'],
     content_security_policy: {
       extension_pages: "script-src 'self'; object-src 'self';",
     },
     host_permissions: [
       '*://*.salesforce.com/*',
       '*://*.my.salesforce.com/*',
+      '*://*.lightning.force.com/*',
+      '*://*.salesforce-setup.com/*',
     ],
     commands: {
       'show-command-palette': {

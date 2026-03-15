@@ -149,14 +149,10 @@ export default defineContentScript({
       chrome.storage.onChanged.addListener(handleStorageChange);
       chrome.runtime.onMessage.addListener(handleRuntimeMessage);
 
-      // Cleanup on page unload
-      window.addEventListener('beforeunload', () => {
-        if (navPollInterval) clearInterval(navPollInterval);
-        chrome.storage.onChanged.removeListener(handleStorageChange);
-        chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
-        currentCtx = null;
-        registry.destroyAll();
-      });
+      // No beforeunload cleanup needed — the browser garbage-collects everything
+      // on real page unload. Manual cleanup here is harmful because Salesforce
+      // can fire beforeunload without actually navigating away, which would
+      // destroy all listeners and leave the extension dead until reload.
 
       logger.debug(`Content script loaded for ${pageContext.orgType} org`);
     } catch (e) {

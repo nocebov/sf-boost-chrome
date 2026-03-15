@@ -25,6 +25,14 @@ export interface PermSetCreationResult {
   rolledBack: boolean;
   failures: Array<{ type: string; name: string; error: string }>;
   warnings: Array<{ type: string; name: string; error: string }>;
+  applied?: Array<{ type: string; name: string; detail: string }>;
+  stats?: {
+    objects: { requested: number; applied: number; duplicates: number; autoAdded: number };
+    fields: { requested: number; validated: number; applied: number; duplicates: number };
+    userPermissions: { requested: number; applied: number; failed: number };
+    tabs: { requested: number; applied: number; duplicates: number };
+    setupEntityAccess: { requested: number; applied: number; duplicates: number };
+  };
 }
 
 function assertNonEmpty(value: string, field: string): string {
@@ -41,7 +49,7 @@ function assertNonEmpty(value: string, field: string): string {
  */
 export async function createPermSetViaApi(
   params: PermSetCreationParams,
-  onProgress?: (message: string) => void,
+  onProgress?: (message: string, completedItems?: number, totalItems?: number) => void,
 ): Promise<PermSetCreationResult> {
   const name = assertNonEmpty(params.name, 'Permission Set name');
   const label = assertNonEmpty(params.label, 'Permission Set label');
@@ -84,6 +92,8 @@ export async function createPermSetViaApi(
     rolledBack: result.rolledBack,
     failures: result.failures ?? [],
     warnings: result.warnings ?? [],
+    applied: result.applied ?? [],
+    stats: result.stats,
   };
 }
 

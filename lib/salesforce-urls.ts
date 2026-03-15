@@ -81,8 +81,8 @@ export function parseLightningUrl(pathname: string): ParsedPage {
     return { pageType: 'record', objectApiName: recordMatch[1], recordId: recordMatch[2] };
   }
 
-  // List: /lightning/o/{ObjectApiName}/list
-  const listMatch = pathname.match(/^\/lightning\/o\/(\w+)\/list/);
+  // List / object views: /lightning/o/{ObjectApiName}/list, pipelineInspection, home, etc.
+  const listMatch = pathname.match(/^\/lightning\/o\/(\w+)\//);
   if (listMatch) {
     return { pageType: 'list', objectApiName: listMatch[1] };
   }

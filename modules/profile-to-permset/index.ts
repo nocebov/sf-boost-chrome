@@ -128,13 +128,17 @@ function injectButton(): boolean {
 
   const btn = createButton('Extract to Permission Set');
   btn.id = BTN_ID;
-  btn.style.marginLeft = tokens.space.lg;
-  btn.style.verticalAlign = 'middle';
 
   btn.addEventListener('click', () => openWizard(profileId));
 
+  // Wrap header + button in a flex row so they sit on the same line
+  const wrapper = document.createElement('div');
+  wrapper.setAttribute('style', `display: flex; align-items: center; gap: ${tokens.space.md}; flex-wrap: wrap;`);
+
   if (header.parentElement) {
-    header.parentElement.insertBefore(btn, header.nextSibling);
+    header.parentElement.insertBefore(wrapper, header);
+    wrapper.appendChild(header);
+    wrapper.appendChild(btn);
   }
 
   return true;
@@ -167,7 +171,21 @@ async function openWizard(profileId: string): Promise<void> {
   if (!currentCtx) return;
   const instanceUrl = currentCtx.pageContext.instanceUrl;
 
-  const { card, close } = createModal(MODAL_ID, { width: '700px', maxHeight: '560px' });
+  // Close guard state
+  let creationFinished = false;
+  let hasNotices = false;
+  let reportExported = false;
+
+  const { card, close } = createModal(MODAL_ID, {
+    width: '700px',
+    maxHeight: '560px',
+    onBeforeClose: () => {
+      if (creationFinished && hasNotices && !reportExported) {
+        return window.confirm('The report has not been copied or downloaded.\nWarnings and issues will be lost.\n\nClose anyway?');
+      }
+      return true;
+    },
+  });
 
   // Header
   const headerDiv = createHeader('Extract Profile to Permission Set', close);
@@ -180,7 +198,13 @@ async function openWizard(profileId: string): Promise<void> {
   try {
     const permissions = await readProfilePermissions(instanceUrl, profileId);
     loadingDiv.remove();
-    renderSelectionStep(card, permissions, instanceUrl, close);
+    renderSelectionStep(card, permissions, instanceUrl, close, {
+      onCreationFinished: (result) => {
+        creationFinished = true;
+        hasNotices = result.failures.length > 0 || result.warnings.length > 0;
+      },
+      onReportExported: () => { reportExported = true; },
+    });
   } catch (err: any) {
     loadingDiv.remove();
     const errorDiv = document.createElement('div');
@@ -247,6 +271,12 @@ interface NoticeGroup {
   key: string;
   title: string;
   description: string;
+  /** Whether items in this group ended up in the Permission Set */
+  appliedStatus: 'applied-modified' | 'skipped' | 'auto-added';
+  /** Whether the user can manually fix these items */
+  fixable: boolean;
+  /** Step-by-step instructions shown when fixable === true */
+  howToFix?: string;
   tone: 'warning' | 'danger' | 'neutral';
   items: CreationNotice[];
 }
@@ -264,6 +294,17 @@ interface ExecutionStageView {
   description: HTMLSpanElement;
 }
 
+interface StatCardRefs {
+  requested: HTMLDivElement;
+  requestedLabel: HTMLDivElement;
+  objects: HTMLDivElement;
+  objectsLabel: HTMLDivElement;
+  fields: HTMLDivElement;
+  fieldsLabel: HTMLDivElement;
+  other: HTMLDivElement;
+  otherLabel: HTMLDivElement;
+}
+
 interface ExecutionView {
   root: HTMLDivElement;
   statusPill: HTMLSpanElement;
@@ -271,6 +312,10 @@ interface ExecutionView {
   statusText: HTMLParagraphElement;
   stageViews: Map<string, ExecutionStageView>;
   resultPanel: HTMLDivElement;
+  statRefs: StatCardRefs;
+  progressBarFill: HTMLDivElement;
+  elapsedSpan: HTMLSpanElement;
+  etaSpan: HTMLSpanElement;
 }
 
 const EXECUTION_STAGES: ExecutionStageConfig[] = [
@@ -324,7 +369,7 @@ function setCardExpanded(card: HTMLDivElement): void {
   ].join(', ');
 }
 
-function createStatCard(label: string, value: string, accent: string = tokens.color.primary): HTMLDivElement {
+function createStatCard(label: string, value: string, accent: string = tokens.color.primary): { card: HTMLDivElement; valueEl: HTMLDivElement; labelEl: HTMLDivElement } {
   const card = document.createElement('div');
   card.setAttribute('style', `
     min-width: 64px;
@@ -344,7 +389,7 @@ function createStatCard(label: string, value: string, accent: string = tokens.co
   labelEl.textContent = label;
 
   card.append(valueEl, labelEl);
-  return card;
+  return { card, valueEl, labelEl };
 }
 
 function setExecutionStageStyle(view: ExecutionStageView, state: 'pending' | 'active' | 'done' | 'failed'): void {
@@ -423,6 +468,13 @@ function updateActiveStageDescription(view: ExecutionView, stageId: string, mess
   }
 }
 
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 function createExecutionView(summary: SelectionSummary, permissionSetName: string): ExecutionView {
   const root = document.createElement('div');
   root.setAttribute('style', `
@@ -480,12 +532,11 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
 
   const statGrid = document.createElement('div');
   statGrid.setAttribute('style', `flex: 0 0 auto; display: flex; gap: ${tokens.space.sm};`);
-  statGrid.append(
-    createStatCard('Requested', `${summary.total}`),
-    createStatCard('Objects', `${summary.objectPermissions}`, tokens.color.envTrailhead),
-    createStatCard('Fields', `${summary.fieldPermissions}`, tokens.color.envScratch),
-    createStatCard('Other', `${summary.userPermissions + summary.tabSettings + summary.setupEntityAccess}`, tokens.color.warning),
-  );
+  const requestedStat = createStatCard('Requested', `${summary.total}`);
+  const objectsStat = createStatCard('Objects', `${summary.objectPermissions}`, tokens.color.envTrailhead);
+  const fieldsStat = createStatCard('Fields', `${summary.fieldPermissions}`, tokens.color.envScratch);
+  const otherStat = createStatCard('Other', `${summary.userPermissions + summary.tabSettings + summary.setupEntityAccess}`, tokens.color.warning);
+  statGrid.append(requestedStat.card, objectsStat.card, fieldsStat.card, otherStat.card);
 
   top.append(intro, statGrid);
 
@@ -562,6 +613,51 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     stageViews.set(stage.id, { row, dot, title, description });
   }
 
+  // Progress bar and timer section at bottom of stage card
+  const progressSection = document.createElement('div');
+  progressSection.setAttribute('style', `
+    margin-top: auto;
+    padding: ${tokens.space.md} 0 0;
+    border-top: 1px solid ${tokens.color.borderDefault};
+  `);
+
+  const progressBarTrack = document.createElement('div');
+  progressBarTrack.setAttribute('style', `
+    height: 4px;
+    border-radius: ${tokens.radius.pill};
+    background: ${tokens.color.surfaceSubtle};
+    overflow: hidden;
+    margin-bottom: ${tokens.space.xs};
+  `);
+
+  const progressBarFill = document.createElement('div');
+  progressBarFill.setAttribute('style', `
+    height: 100%;
+    width: 0%;
+    border-radius: ${tokens.radius.pill};
+    background: ${tokens.color.primary};
+    transition: width ${tokens.transition.normal} ease;
+  `);
+  progressBarTrack.appendChild(progressBarFill);
+
+  const timerRow = document.createElement('div');
+  timerRow.setAttribute('style', `
+    display: flex;
+    justify-content: space-between;
+    font-size: ${tokens.font.size.xs};
+    color: ${tokens.color.textTertiary};
+  `);
+
+  const elapsedSpan = document.createElement('span');
+  elapsedSpan.textContent = '0:00';
+
+  const etaSpan = document.createElement('span');
+  etaSpan.textContent = '';
+
+  timerRow.append(elapsedSpan, etaSpan);
+  progressSection.append(progressBarTrack, timerRow);
+  stageCard.appendChild(progressSection);
+
   // Result panel (full right side)
   const resultPanel = document.createElement('div');
   resultPanel.setAttribute('style', `
@@ -594,6 +690,19 @@ function createExecutionView(summary: SelectionSummary, permissionSetName: strin
     statusText,
     stageViews,
     resultPanel,
+    statRefs: {
+      requested: requestedStat.valueEl,
+      requestedLabel: requestedStat.labelEl,
+      objects: objectsStat.valueEl,
+      objectsLabel: objectsStat.labelEl,
+      fields: fieldsStat.valueEl,
+      fieldsLabel: fieldsStat.labelEl,
+      other: otherStat.valueEl,
+      otherLabel: otherStat.labelEl,
+    },
+    progressBarFill,
+    elapsedSpan,
+    etaSpan,
   };
 
   updateExecutionStages(view, 'prepare', 'running');
@@ -607,7 +716,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'readonly-downgrade',
       title: 'Converted To Read-Only',
-      description: 'These fields exist, but Salesforce does not allow edit access for them in this org. They were kept as read-only instead of causing a failure.',
+      description: 'These field permissions ARE in the Permission Set, but with Read access only (not Edit). This happens when Salesforce marks a field as non-updateable — for example formula fields, auto-number fields, or fields locked at the object level.',
+      appliedStatus: 'applied-modified',
+      fixable: false,
+      howToFix: undefined,
       tone: 'warning',
     };
   }
@@ -616,7 +728,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'missing-field',
       title: 'Missing Fields In Target Org',
-      description: 'These fields were present in the source profile data but are not available in the current org or enabled feature set.',
+      description: 'These field permissions are NOT in the Permission Set. The fields do not exist in this org — typically custom fields that have not been deployed yet, or features that are not enabled.',
+      appliedStatus: 'skipped',
+      fixable: true,
+      howToFix: '1. Deploy the missing custom fields to this org via a Change Set, Metadata API, or Salesforce CLI.\n2. After deployment, open the Permission Set → Object Settings → find the object → click Edit → enable the field permissions manually.\nAlternatively, re-run "Extract to Permission Set" after deploying — the extraction will pick up the newly available fields.',
       tone: 'warning',
     };
   }
@@ -625,7 +740,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'not-permissionable',
       title: 'Non-Permissionable Fields',
-      description: 'Salesforce marked these fields as not permissionable, so they were skipped.',
+      description: 'These field permissions are NOT in the Permission Set. Salesforce has marked these fields as system-managed and non-permissionable — typically Id, CreatedById, LastModifiedById, or fields on platform-controlled objects. No Permission Set can control them.',
+      appliedStatus: 'skipped',
+      fixable: false,
+      howToFix: undefined,
       tone: 'warning',
     };
   }
@@ -634,7 +752,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'unsupported-object',
       title: 'Unsupported Object Permissions',
-      description: 'These object types cannot receive Object Permissions in this org, so they were skipped before insert.',
+      description: 'These object permissions are NOT in the Permission Set. Salesforce does not allow Permission Set-based access control for these object types — typically internal platform objects, virtual objects, or feature-specific records that Salesforce manages automatically.',
+      appliedStatus: 'skipped',
+      fixable: false,
+      howToFix: undefined,
       tone: 'warning',
     };
   }
@@ -643,7 +764,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'auto-resolved-dependency',
       title: 'Auto-Resolved Dependencies',
-      description: 'Read permissions were automatically added for parent objects required by other objects in the set (e.g., Account is required by Asset).',
+      description: 'These object permissions were automatically added because Salesforce requires them as prerequisites for other objects in the set. For example, granting access to Asset requires Read on Account.',
+      appliedStatus: 'auto-added',
+      fixable: false,
+      howToFix: undefined,
       tone: 'neutral',
     };
   }
@@ -652,7 +776,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'duplicate',
       title: 'Duplicate Entries Ignored',
-      description: 'Salesforce already had an identical row queued or created for these permissions, so duplicates were ignored safely.',
+      description: 'These permissions already existed in the Permission Set (possibly from a previous run). Duplicates were safely ignored — the existing permissions are still in place.',
+      appliedStatus: 'applied-modified',
+      fixable: false,
+      howToFix: undefined,
       tone: 'neutral',
     };
   }
@@ -661,7 +788,10 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     return {
       key: 'rollback',
       title: 'Rollback Problems',
-      description: 'The creation flow hit an error and also had trouble cleaning up the partial Permission Set.',
+      description: 'The creation flow encountered a critical error and also had trouble cleaning up the partial Permission Set.',
+      appliedStatus: 'skipped',
+      fixable: false,
+      howToFix: undefined,
       tone: 'danger',
     };
   }
@@ -670,6 +800,9 @@ function categorizeNotice(notice: CreationNotice): Omit<NoticeGroup, 'items'> {
     key: 'other',
     title: 'Other Warnings',
     description: 'These items were adjusted or skipped for reasons that do not fit the common categories.',
+    appliedStatus: 'skipped',
+    fixable: false,
+    howToFix: undefined,
     tone: 'warning',
   };
 }
@@ -699,7 +832,7 @@ function createOutcomeCard(
   value: string,
   _description: string,
   palette: { background: string; border: string; title: string; value: string },
-): HTMLDivElement {
+): { card: HTMLDivElement; valueEl: HTMLDivElement } {
   const card = document.createElement('div');
   card.setAttribute('style', `
     flex: 1 1 0;
@@ -720,7 +853,7 @@ function createOutcomeCard(
   label.textContent = title;
 
   card.append(valueEl, label);
-  return card;
+  return { card, valueEl };
 }
 
 function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HTMLDetailsElement {
@@ -729,6 +862,13 @@ function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HT
     : group.tone === 'neutral'
       ? { border: tokens.color.borderDefault, background: tokens.color.surfaceRaised, title: tokens.color.textSecondary, badge: tokens.color.textTertiary }
       : { border: tokens.color.warningBorder, background: tokens.color.warningLight, title: tokens.color.warningText, badge: tokens.color.warning };
+
+  // Status badge config
+  const statusConfig = group.appliedStatus === 'applied-modified'
+    ? { label: '✓ Applied (modified)', bg: '#dcfce7', color: tokens.color.successText, border: tokens.color.successBorder }
+    : group.appliedStatus === 'auto-added'
+      ? { label: '✓ Auto-Added', bg: tokens.color.infoLight, color: tokens.color.infoText, border: tokens.color.infoBorder }
+      : { label: '⊘ Not Applied', bg: '#f3f4f6', color: tokens.color.textSecondary, border: tokens.color.borderDefault };
 
   const details = document.createElement('details');
   details.open = openByDefault;
@@ -746,13 +886,31 @@ function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HT
     padding: ${tokens.space.md} 10px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: ${tokens.space.md};
   `);
 
+  const titleWrap = document.createElement('div');
+  titleWrap.setAttribute('style', 'flex: 1 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0;');
+
   const title = document.createElement('span');
-  title.setAttribute('style', `font-size: 12px; font-weight: ${tokens.font.weight.bold}; color: ${palette.title};`);
+  title.setAttribute('style', `font-size: 12px; font-weight: ${tokens.font.weight.bold}; color: ${palette.title}; white-space: nowrap;`);
   title.textContent = group.title;
+
+  const statusBadge = document.createElement('span');
+  statusBadge.setAttribute('style', `
+    padding: 1px 7px;
+    border-radius: ${tokens.radius.pill};
+    background: ${statusConfig.bg};
+    color: ${statusConfig.color};
+    border: 1px solid ${statusConfig.border};
+    font-size: 10px;
+    font-weight: ${tokens.font.weight.semibold};
+    white-space: nowrap;
+    flex-shrink: 0;
+  `);
+  statusBadge.textContent = statusConfig.label;
+
+  titleWrap.append(title, statusBadge);
 
   const badge = document.createElement('span');
   badge.setAttribute('style', `
@@ -767,20 +925,73 @@ function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HT
   `);
   badge.textContent = `${group.items.length}`;
 
-  summary.append(title, badge);
+  summary.append(titleWrap, badge);
   details.appendChild(summary);
 
+  // Info section: description + how-to-fix (shown inside the accordion, above item list)
+  const infoSection = document.createElement('div');
+  infoSection.setAttribute('style', `padding: 0 10px ${tokens.space.md};`);
+
+  const descriptionEl = document.createElement('p');
+  descriptionEl.setAttribute('style', `
+    margin: 0 0 ${tokens.space.sm};
+    font-size: ${tokens.font.size.xs};
+    line-height: 1.5;
+    color: ${tokens.color.textSecondary};
+  `);
+  descriptionEl.textContent = group.description;
+  infoSection.appendChild(descriptionEl);
+
+  if (group.fixable && group.howToFix) {
+    const fixBox = document.createElement('div');
+    fixBox.setAttribute('style', `
+      padding: ${tokens.space.sm} ${tokens.space.md};
+      border-radius: ${tokens.radius.md};
+      border: 1px solid ${tokens.color.successBorder};
+      background: ${tokens.color.successLight};
+      margin-bottom: ${tokens.space.sm};
+    `);
+
+    const fixTitle = document.createElement('div');
+    fixTitle.setAttribute('style', `font-size: ${tokens.font.size.xs}; font-weight: ${tokens.font.weight.bold}; color: ${tokens.color.successText}; margin-bottom: 4px;`);
+    fixTitle.textContent = '✦ How to fix';
+    fixBox.appendChild(fixTitle);
+
+    const fixSteps = group.howToFix.split('\n');
+    for (const step of fixSteps) {
+      const stepEl = document.createElement('p');
+      stepEl.setAttribute('style', `margin: 2px 0; font-size: ${tokens.font.size.xs}; line-height: 1.5; color: ${tokens.color.successText};`);
+      stepEl.textContent = step;
+      fixBox.appendChild(stepEl);
+    }
+
+    infoSection.appendChild(fixBox);
+  } else if (!group.fixable && group.appliedStatus === 'skipped') {
+    const noFixNote = document.createElement('p');
+    noFixNote.setAttribute('style', `
+      margin: 0 0 ${tokens.space.sm};
+      font-size: ${tokens.font.size.xs};
+      color: ${tokens.color.textTertiary};
+      font-style: italic;
+    `);
+    noFixNote.textContent = 'No action possible — this is a Salesforce platform limitation.';
+    infoSection.appendChild(noFixNote);
+  }
+
+  details.appendChild(infoSection);
+
+  // Item list — no nested scroll; flows naturally in the main result panel scroll.
+  // For long lists, show first VISIBLE_LIMIT items with a "Show all" toggle.
+  const VISIBLE_LIMIT = 15;
   const list = document.createElement('div');
   list.setAttribute('style', `
     display: flex;
     flex-direction: column;
     gap: 3px;
-    max-height: 300px;
-    overflow-y: auto;
     padding: 0 10px ${tokens.space.md};
   `);
 
-  group.items.forEach((item) => {
+  const createItemRow = (item: { name: string; type: string }): HTMLDivElement => {
     const row = document.createElement('div');
     row.setAttribute('style', `
       display: flex;
@@ -793,17 +1004,52 @@ function createNoticeGroupSection(group: NoticeGroup, openByDefault = false): HT
     `);
 
     const name = document.createElement('span');
-    name.setAttribute('style', `font-family: ${tokens.font.family.mono}; color: ${tokens.color.textPrimary}; white-space: nowrap; flex: 0 0 auto; max-width: 200px; overflow: hidden; text-overflow: ellipsis;`);
-    name.textContent = `${item.type}: ${item.name}`;
+    name.setAttribute('style', `font-family: ${tokens.font.family.mono}; color: ${tokens.color.textPrimary}; white-space: nowrap; flex: 0 0 auto; max-width: 220px; overflow: hidden; text-overflow: ellipsis;`);
+    name.textContent = item.name;
     name.title = `${item.type}: ${item.name}`;
 
-    const error = document.createElement('span');
-    error.setAttribute('style', `color: ${tokens.color.textSecondary}; flex: 1 1 auto; min-width: 0;`);
-    error.textContent = item.error;
+    row.appendChild(name);
+    return row;
+  };
 
-    row.append(name, error);
-    list.appendChild(row);
-  });
+  const needsTruncation = group.items.length > VISIBLE_LIMIT;
+  const visibleItems = needsTruncation ? group.items.slice(0, VISIBLE_LIMIT) : group.items;
+  const hiddenItems = needsTruncation ? group.items.slice(VISIBLE_LIMIT) : [];
+
+  visibleItems.forEach((item) => list.appendChild(createItemRow(item)));
+
+  if (needsTruncation) {
+    const hiddenContainer = document.createElement('div');
+    hiddenContainer.setAttribute('style', 'display: none; flex-direction: column; gap: 3px;');
+    hiddenItems.forEach((item) => hiddenContainer.appendChild(createItemRow(item)));
+    list.appendChild(hiddenContainer);
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.setAttribute('style', `
+      margin-top: ${tokens.space.xs};
+      padding: ${tokens.space.xs} ${tokens.space.sm};
+      border: 1px solid ${palette.border};
+      border-radius: ${tokens.radius.md};
+      background: rgba(255,255,255,0.6);
+      color: ${palette.title};
+      font-size: ${tokens.font.size.xs};
+      font-weight: ${tokens.font.weight.semibold};
+      cursor: pointer;
+      align-self: flex-start;
+      transition: background ${tokens.transition.normal};
+    `);
+    toggleBtn.textContent = `Show all ${group.items.length} items`;
+    toggleBtn.addEventListener('mouseenter', () => { toggleBtn.style.background = 'rgba(255,255,255,0.9)'; });
+    toggleBtn.addEventListener('mouseleave', () => { toggleBtn.style.background = 'rgba(255,255,255,0.6)'; });
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = hiddenContainer.style.display === 'none';
+      hiddenContainer.style.display = isHidden ? 'flex' : 'none';
+      toggleBtn.textContent = isHidden
+        ? `Show first ${VISIBLE_LIMIT} items`
+        : `Show all ${group.items.length} items`;
+    });
+    list.appendChild(toggleBtn);
+  }
 
   details.appendChild(list);
   return details;
@@ -814,6 +1060,7 @@ function renderExecutionResult(
   result: Awaited<ReturnType<typeof createPermSetViaApi>>,
   instanceUrl: string,
   summary: SelectionSummary,
+  options: { permSetLabel: string; elapsedMs: number; onExport: () => void },
 ): void {
   view.resultPanel.textContent = '';
   // Switch from dashed placeholder to solid result container
@@ -823,16 +1070,32 @@ function renderExecutionResult(
   const warningGroups = groupNotices(result.warnings);
   const failureGroups = groupNotices(result.failures);
 
-  view.statusPill.textContent = result.success ? (result.warnings.length > 0 ? 'Completed With Warnings' : 'Completed') : 'Failed';
-  view.statusPill.style.background = result.success
-    ? (result.warnings.length > 0 ? '#fef3c7' : '#dcfce7')
-    : tokens.color.errorLight;
-  view.statusPill.style.color = result.success
-    ? (result.warnings.length > 0 ? tokens.color.warningText : tokens.color.successText)
-    : tokens.color.errorText;
-  view.statusTitle.textContent = result.success
-    ? (result.warnings.length > 0 ? 'Created With Adjustments' : 'Created Successfully')
-    : 'Creation Failed';
+  const hasFailures = result.failures.length > 0;
+  const hasWarnings = result.warnings.length > 0;
+
+  if (result.success) {
+    if (hasFailures) {
+      view.statusPill.textContent = 'Partial Success';
+      view.statusPill.style.background = tokens.color.warningLight;
+      view.statusPill.style.color = tokens.color.warningText;
+      view.statusTitle.textContent = 'Created With Some Issues';
+    } else if (hasWarnings) {
+      view.statusPill.textContent = 'Completed With Warnings';
+      view.statusPill.style.background = '#fef3c7';
+      view.statusPill.style.color = tokens.color.warningText;
+      view.statusTitle.textContent = 'Created With Adjustments';
+    } else {
+      view.statusPill.textContent = 'Completed';
+      view.statusPill.style.background = '#dcfce7';
+      view.statusPill.style.color = tokens.color.successText;
+      view.statusTitle.textContent = 'Created Successfully';
+    }
+  } else {
+    view.statusPill.textContent = 'Failed';
+    view.statusPill.style.background = tokens.color.errorLight;
+    view.statusPill.style.color = tokens.color.errorText;
+    view.statusTitle.textContent = 'Creation Failed';
+  }
 
   // Compact banner with action
   const banner = document.createElement('div');
@@ -844,21 +1107,29 @@ function renderExecutionResult(
     align-items: center;
     padding: 10px ${tokens.space.lg};
     border-radius: ${tokens.radius.xl};
-    border: 1px solid ${result.success ? (result.warnings.length > 0 ? tokens.color.warningBorder : tokens.color.successBorder) : tokens.color.errorBorder};
+    border: 1px solid ${result.success
+      ? (hasFailures ? tokens.color.warningBorder : (hasWarnings ? tokens.color.warningBorder : tokens.color.successBorder))
+      : tokens.color.errorBorder};
     background: ${result.success
-      ? (result.warnings.length > 0 ? tokens.color.warningLight : tokens.color.successLight)
+      ? (hasFailures ? tokens.color.warningLight : (hasWarnings ? tokens.color.warningLight : tokens.color.successLight))
       : tokens.color.errorLight};
   `);
 
   const bannerText = document.createElement('div');
   bannerText.setAttribute('style', `font-size: 12px; line-height: 1.4; color: ${tokens.color.textSecondary}; flex: 1 1 auto; min-width: 200px;`);
-  bannerText.textContent = result.success
-    ? (result.warnings.length > 0
-      ? 'Some permissions were downgraded, skipped, or ignored. Review warnings below.'
-      : 'All selected permissions were applied successfully.')
-    : (result.rolledBack
+  if (result.success) {
+    if (hasFailures) {
+      bannerText.textContent = 'Permission Set was created. Some individual permissions could not be applied. Review issues below.';
+    } else if (hasWarnings) {
+      bannerText.textContent = 'Some permissions were downgraded, skipped, or ignored. Review warnings below.';
+    } else {
+      bannerText.textContent = 'All selected permissions were applied successfully.';
+    }
+  } else {
+    bannerText.textContent = result.rolledBack
       ? 'Request was rejected. The incomplete Permission Set was rolled back.'
-      : 'Request was rejected. Rollback did not complete cleanly.');
+      : 'Request was rejected. Rollback did not complete cleanly.';
+  }
 
   banner.appendChild(bannerText);
 
@@ -894,32 +1165,85 @@ function renderExecutionResult(
     font-weight: ${tokens.font.weight.semibold};
     white-space: nowrap;
   `);
-  outcomeChip.textContent = result.success ? `Warnings: ${result.warnings.length}` : `Issues: ${result.failures.length}`;
+  if (hasFailures && hasWarnings) {
+    outcomeChip.textContent = `${result.failures.length} issues, ${result.warnings.length} warnings`;
+  } else if (hasFailures) {
+    outcomeChip.textContent = `Issues: ${result.failures.length}`;
+  } else {
+    outcomeChip.textContent = `Warnings: ${result.warnings.length}`;
+  }
   bannerActions.appendChild(outcomeChip);
   banner.appendChild(bannerActions);
 
+  // Permission Set name and elapsed time info row
+  const infoRow = document.createElement('div');
+  infoRow.setAttribute('style', `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: ${tokens.font.size.sm};
+    color: ${tokens.color.textSecondary};
+  `);
+  const nameSpan = document.createElement('span');
+  nameSpan.setAttribute('style', `font-weight: ${tokens.font.weight.semibold};`);
+  nameSpan.textContent = options.permSetLabel;
+  const timeSpan = document.createElement('span');
+  timeSpan.setAttribute('style', `color: ${tokens.color.textTertiary};`);
+  timeSpan.textContent = `Completed in ${formatDuration(options.elapsedMs)}`;
+  infoRow.append(nameSpan, timeSpan);
+
+  // Compute applied count from stats
+  const stats = result.stats;
+  const totalApplied = stats
+    ? stats.objects.applied + stats.fields.applied + stats.userPermissions.applied + stats.tabs.applied + stats.setupEntityAccess.applied
+    : null;
+
+  // Update header stat cards with post-execution data
+  if (stats) {
+    view.statRefs.requested.textContent = `${totalApplied}`;
+    view.statRefs.requestedLabel.textContent = 'Applied';
+    view.statRefs.objects.textContent = `${stats.objects.applied}`;
+    if (stats.objects.autoAdded > 0) {
+      view.statRefs.objectsLabel.textContent = `Objects (+${stats.objects.autoAdded})`;
+    }
+    view.statRefs.fields.textContent = `${stats.fields.applied}`;
+    view.statRefs.other.textContent = `${stats.userPermissions.applied + stats.tabs.applied + stats.setupEntityAccess.applied}`;
+  }
+
   // Compact metrics row
   const metrics = document.createElement('div');
-  metrics.setAttribute('style', `display: flex; gap: ${tokens.space.md};`);
+  metrics.setAttribute('style', `display: flex; gap: ${tokens.space.md}; flex-wrap: wrap;`);
   metrics.append(
     createOutcomeCard(
       'Requested',
       `${summary.total}`,
       '',
       { background: tokens.color.infoLight, border: tokens.color.infoBorder, title: tokens.color.infoText, value: tokens.color.infoText },
-    ),
+    ).card,
+  );
+  if (totalApplied !== null) {
+    metrics.appendChild(
+      createOutcomeCard(
+        'Applied',
+        `${totalApplied}`,
+        '',
+        { background: tokens.color.successLight, border: tokens.color.successBorder, title: tokens.color.successText, value: tokens.color.success },
+      ).card,
+    );
+  }
+  metrics.append(
     createOutcomeCard(
       'Warnings',
       `${result.warnings.length}`,
       '',
       { background: tokens.color.warningLight, border: tokens.color.warningBorder, title: tokens.color.warningText, value: tokens.color.warning },
-    ),
+    ).card,
     createOutcomeCard(
       'Issues',
       `${result.failures.length}`,
       '',
-      { background: result.failures.length > 0 ? tokens.color.errorLight : tokens.color.surfaceRaised, border: result.failures.length > 0 ? tokens.color.errorBorder : tokens.color.borderDefault, title: result.failures.length > 0 ? tokens.color.errorText : tokens.color.textSecondary, value: result.failures.length > 0 ? tokens.color.error : tokens.color.textSecondary },
-    ),
+      { background: hasFailures ? tokens.color.errorLight : tokens.color.surfaceRaised, border: hasFailures ? tokens.color.errorBorder : tokens.color.borderDefault, title: hasFailures ? tokens.color.errorText : tokens.color.textSecondary, value: hasFailures ? tokens.color.error : tokens.color.textSecondary },
+    ).card,
   );
 
   // Warning/failure groups - scrollable within result panel
@@ -961,36 +1285,71 @@ function renderExecutionResult(
     groupsWrap.appendChild(cleanState);
   }
 
-  // Export bar (only if there are notices to export)
+  // Export bar
   const allNotices = [
     ...result.failures.map((n) => ({ ...n, severity: 'Issue' as const })),
     ...result.warnings.map((n) => ({ ...n, severity: 'Warning' as const })),
   ];
+  const appliedItems = (result.applied ?? []).map((a) => ({
+    severity: 'Applied' as const,
+    type: a.type,
+    name: a.name,
+    error: a.detail,
+  }));
+  const hasExportableItems = allNotices.length > 0 || appliedItems.length > 0;
 
-  if (allNotices.length > 0) {
+  if (hasExportableItems) {
     const exportBar = document.createElement('div');
     exportBar.setAttribute('style', `
       display: flex;
       gap: ${tokens.space.sm};
       align-items: center;
+      flex-wrap: wrap;
     `);
 
     const exportLabel = document.createElement('span');
     exportLabel.setAttribute('style', `font-size: ${tokens.font.size.sm}; color: ${tokens.color.textTertiary}; margin-right: auto;`);
-    exportLabel.textContent = `Export ${allNotices.length} items:`;
+
+    let includeApplied = false;
+    const getExportItems = () => includeApplied ? [...appliedItems, ...allNotices] : allNotices;
+    const updateLabel = () => {
+      const count = getExportItems().length;
+      exportLabel.textContent = `Export ${count} items:`;
+    };
+    updateLabel();
+
+    // Include Applied checkbox
+    if (appliedItems.length > 0) {
+      const cbLabel = document.createElement('label');
+      cbLabel.setAttribute('style', `
+        display: flex; align-items: center; gap: ${tokens.space.xs};
+        font-size: ${tokens.font.size.xs}; color: ${tokens.color.textSecondary}; cursor: pointer;
+        margin-right: ${tokens.space.sm};
+      `);
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.addEventListener('change', () => {
+        includeApplied = cb.checked;
+        updateLabel();
+      });
+      cbLabel.append(cb, document.createTextNode('Include applied'));
+      exportBar.appendChild(cbLabel);
+    }
 
     const buildRows = (): string[][] => {
       const header = ['Severity', 'Category', 'Permission Type', 'API Name', 'Detail'];
-      const rows = allNotices.map((n) => {
+      const items = getExportItems();
+      const rows = items.map((n) => {
+        if (n.severity === 'Applied') {
+          return [n.severity, '', n.type, n.name, n.error];
+        }
         const cat = categorizeNotice(n);
         return [n.severity, cat.title, n.type, n.name, n.error];
       });
       return [header, ...rows];
     };
 
-    const copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy for Excel';
-    copyBtn.setAttribute('style', `
+    const exportBtnStyle = `
       padding: 5px 10px;
       border-radius: ${tokens.radius.md};
       border: 1px solid ${tokens.color.borderDefault};
@@ -1001,13 +1360,18 @@ function renderExecutionResult(
       cursor: pointer;
       white-space: nowrap;
       transition: background ${tokens.transition.normal};
-    `);
+    `;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy for Excel';
+    copyBtn.setAttribute('style', exportBtnStyle);
     copyBtn.addEventListener('mouseenter', () => { copyBtn.style.background = tokens.color.surfaceRaised; });
     copyBtn.addEventListener('mouseleave', () => { copyBtn.style.background = tokens.color.surfaceBase; });
     copyBtn.addEventListener('click', () => {
       const rows = buildRows();
       const tsv = rows.map((r) => r.join('\t')).join('\n');
       navigator.clipboard.writeText(tsv).then(() => {
+        options.onExport();
         const prev = copyBtn.textContent;
         copyBtn.textContent = 'Copied!';
         copyBtn.style.background = tokens.color.successLight;
@@ -1024,21 +1388,11 @@ function renderExecutionResult(
 
     const csvBtn = document.createElement('button');
     csvBtn.textContent = 'Download CSV';
-    csvBtn.setAttribute('style', `
-      padding: 5px 10px;
-      border-radius: ${tokens.radius.md};
-      border: 1px solid ${tokens.color.borderDefault};
-      background: ${tokens.color.surfaceBase};
-      color: ${tokens.color.textSecondary};
-      font-size: ${tokens.font.size.sm};
-      font-weight: ${tokens.font.weight.semibold};
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background ${tokens.transition.normal};
-    `);
+    csvBtn.setAttribute('style', exportBtnStyle);
     csvBtn.addEventListener('mouseenter', () => { csvBtn.style.background = tokens.color.surfaceRaised; });
     csvBtn.addEventListener('mouseleave', () => { csvBtn.style.background = tokens.color.surfaceBase; });
     csvBtn.addEventListener('click', () => {
+      options.onExport();
       const rows = buildRows();
       const csvContent = rows.map((r) =>
         r.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','),
@@ -1048,15 +1402,15 @@ function renderExecutionResult(
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'permset-notices.csv';
+      a.download = `permset-${options.permSetLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}-report.csv`;
       a.click();
       URL.revokeObjectURL(url);
     });
 
     exportBar.append(exportLabel, copyBtn, csvBtn);
-    view.resultPanel.append(banner, metrics, exportBar, groupsWrap);
+    view.resultPanel.append(banner, infoRow, metrics, exportBar, groupsWrap);
   } else {
-    view.resultPanel.append(banner, metrics, groupsWrap);
+    view.resultPanel.append(banner, infoRow, metrics, groupsWrap);
   }
 }
 
@@ -1064,7 +1418,11 @@ function renderSelectionStep(
   card: HTMLDivElement,
   permissions: ProfilePermissions,
   instanceUrl: string,
-  close: () => void
+  close: () => void,
+  callbacks: {
+    onCreationFinished: (result: Awaited<ReturnType<typeof createPermSetViaApi>>) => void;
+    onReportExported: () => void;
+  },
 ): void {
   const body = document.createElement('div');
   body.setAttribute('style', `padding: ${tokens.space.xl} ${tokens.space['2xl']}; flex: 1; overflow-y: auto;`);
@@ -1241,35 +1599,71 @@ function renderSelectionStep(
     body.remove();
     footer.remove();
 
-    const executionView = createExecutionView(summary, nameInput.value.trim() || name);
+    const permSetLabel = nameInput.value.trim() || name;
+    const executionView = createExecutionView(summary, permSetLabel);
     card.appendChild(executionView.root);
     updateExecutionStages(executionView, 'prepare', 'running');
+
+    // Timer
+    const startTime = Date.now();
+    const timerInterval = setInterval(() => {
+      executionView.elapsedSpan.textContent = formatDuration(Date.now() - startTime);
+    }, 1000);
 
     try {
       const result = await createPermSetViaApi({
         instanceUrl,
         name,
-        label: nameInput.value.trim() || name,
+        label: permSetLabel,
         objectPermissions: objPerms,
         fieldPermissions: fldPerms,
         userPermissions: usrPerms,
         tabSettings: tabPerms,
         setupEntityAccess: seaPerms,
-      }, (message) => {
+      }, (message, completedItems, totalItems) => {
         const stageId = inferExecutionStage(message);
         executionView.statusText.textContent = message;
         updateActiveStageDescription(executionView, stageId, message);
         updateExecutionStages(executionView, stageId, 'running');
+
+        // Update progress bar
+        if (totalItems && totalItems > 0 && completedItems !== undefined) {
+          const pct = Math.min(100, Math.round((completedItems / totalItems) * 100));
+          executionView.progressBarFill.style.width = `${pct}%`;
+          // ETA
+          if (completedItems > 0) {
+            const elapsed = Date.now() - startTime;
+            const rate = completedItems / elapsed;
+            const remaining = (totalItems - completedItems) / rate;
+            executionView.etaSpan.textContent = `~${formatDuration(remaining)} left`;
+          }
+        }
       });
 
-      executionView.statusText.textContent = result.success
-        ? (result.warnings.length > 0 ? 'Creation finished with warnings.' : 'Creation finished successfully.')
-        : (result.rolledBack
+      const elapsedMs = Date.now() - startTime;
+      callbacks.onCreationFinished(result);
+
+      if (result.success) {
+        if (result.failures.length > 0) {
+          executionView.statusText.textContent = 'Creation finished with some issues. Review details below.';
+        } else if (result.warnings.length > 0) {
+          executionView.statusText.textContent = 'Creation finished with warnings.';
+        } else {
+          executionView.statusText.textContent = 'Creation finished successfully.';
+        }
+      } else {
+        executionView.statusText.textContent = result.rolledBack
           ? 'Creation failed and the partial Permission Set was rolled back.'
-          : 'Creation failed and rollback did not complete.');
+          : 'Creation failed and rollback did not complete.';
+      }
       updateExecutionStages(executionView, 'finish', result.success ? 'success' : 'failure');
-      renderExecutionResult(executionView, result, instanceUrl, summary);
+      renderExecutionResult(executionView, result, instanceUrl, summary, {
+        permSetLabel,
+        elapsedMs,
+        onExport: callbacks.onReportExported,
+      });
     } catch (err: any) {
+      const elapsedMs = Date.now() - startTime;
       const message = err instanceof Error ? err.message : String(err);
       executionView.statusPill.textContent = 'Failed';
       executionView.statusPill.style.background = tokens.color.errorLight;
@@ -1277,19 +1671,25 @@ function renderSelectionStep(
       executionView.statusTitle.textContent = 'Unexpected Error';
       executionView.statusText.textContent = message;
       updateExecutionStages(executionView, 'finish', 'failure');
-      renderExecutionResult(
-        executionView,
-        {
-          id: '',
-          success: false,
-          rolledBack: false,
-          warnings: [],
-          failures: [{ type: 'Error', name: 'createPermSetViaApi', error: message }],
-        },
-        instanceUrl,
-        summary,
-      );
+      const errorResult = {
+        id: '',
+        success: false,
+        rolledBack: false,
+        warnings: [] as Array<{ type: string; name: string; error: string }>,
+        failures: [{ type: 'Error', name: 'createPermSetViaApi', error: message }],
+        applied: [] as Array<{ type: string; name: string; detail: string }>,
+      };
+      callbacks.onCreationFinished(errorResult);
+      renderExecutionResult(executionView, errorResult, instanceUrl, summary, {
+        permSetLabel,
+        elapsedMs,
+        onExport: callbacks.onReportExported,
+      });
     } finally {
+      clearInterval(timerInterval);
+      executionView.progressBarFill.style.width = '100%';
+      executionView.etaSpan.textContent = '';
+      executionView.elapsedSpan.textContent = `Completed in ${formatDuration(Date.now() - startTime)}`;
     }
   });
 

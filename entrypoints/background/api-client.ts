@@ -49,6 +49,25 @@ async function fetchWithRetry(
   throw lastError ?? new Error('Request failed after retries');
 }
 
+// --- Batched parallel execution ---
+
+const BATCH_CONCURRENCY = 10;
+
+async function executeInBatches<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  onBatchProgress?: (completed: number, total: number) => void,
+): Promise<void> {
+  let completed = 0;
+  for (let i = 0; i < items.length; i += BATCH_CONCURRENCY) {
+    const batch = items.slice(i, i + BATCH_CONCURRENCY);
+    await Promise.allSettled(batch.map((item) => fn(item).finally(() => {
+      completed++;
+      onBatchProgress?.(completed, items.length);
+    })));
+  }
+}
+
 function authHeaders(sessionId: string): Record<string, string> {
   return {
     Authorization: `Bearer ${sessionId}`,
@@ -314,6 +333,20 @@ export interface PermissionFailure {
   type: string;
   name: string;
   error: string;
+}
+
+export interface PermissionSetStats {
+  objects: { requested: number; applied: number; duplicates: number; autoAdded: number };
+  fields: { requested: number; validated: number; applied: number; duplicates: number };
+  userPermissions: { requested: number; applied: number; failed: number };
+  tabs: { requested: number; applied: number; duplicates: number };
+  setupEntityAccess: { requested: number; applied: number; duplicates: number };
+}
+
+export interface AppliedPermission {
+  type: string;
+  name: string;
+  detail: string;
 }
 
 const MAX_PERMISSION_SET_NAME_LENGTH = 80;
@@ -812,13 +845,21 @@ export async function createPermissionSet(
     tabSettings: Array<{ name: string; visibility: string }>;
     setupEntityAccess: Array<{ entityId: string; entityType: string }>;
   },
-  onProgress?: (msg: string) => void,
-): Promise<{ id: string; success: boolean; rolledBack: boolean; failures: PermissionFailure[]; warnings: PermissionFailure[] }> {
+  onProgress?: (msg: string, completedItems?: number, totalItems?: number) => void,
+): Promise<{ id: string; success: boolean; rolledBack: boolean; failures: PermissionFailure[]; warnings: PermissionFailure[]; applied: AppliedPermission[]; stats: PermissionSetStats }> {
   let normalizedData = normalizePermissionSetPayload(data);
   const headers = authHeaders(sessionId);
   const failures: PermissionFailure[] = [];
   const warnings: PermissionFailure[] = [];
+  const applied: AppliedPermission[] = [];
   let permSetId = '';
+  const stats: PermissionSetStats = {
+    objects: { requested: 0, applied: 0, duplicates: 0, autoAdded: 0 },
+    fields: { requested: 0, validated: 0, applied: 0, duplicates: 0 },
+    userPermissions: { requested: 0, applied: 0, failed: 0 },
+    tabs: { requested: 0, applied: 0, duplicates: 0 },
+    setupEntityAccess: { requested: 0, applied: 0, duplicates: 0 },
+  };
 
   async function parseError(response: Response): Promise<string> {
     try {
@@ -845,26 +886,16 @@ export async function createPermissionSet(
     return parseError(deleteResponse);
   }
 
-  async function finalizeFailure(): Promise<{
-    id: string;
-    success: boolean;
-    rolledBack: boolean;
-    failures: PermissionFailure[];
-    warnings: PermissionFailure[];
-  }> {
-    onProgress?.('Errors detected. Rolling back incomplete Permission Set...');
-    const rollbackError = await rollbackPermissionSet();
-    if (rollbackError) {
-      failures.push({ type: 'Rollback', name: normalizedData.name, error: rollbackError });
-      onProgress?.('Errors detected and rollback failed');
-      return { id: permSetId, success: false, rolledBack: false, failures, warnings };
-    }
-
-    onProgress?.('Errors detected. Incomplete Permission Set was rolled back');
-    return { id: permSetId, success: false, rolledBack: true, failures, warnings };
-  }
-
   try {
+    const inputObjectCount = data.objectPermissions.length;
+    stats.fields.requested = normalizedData.fieldPermissions.length;
+    stats.userPermissions.requested = normalizedData.userPermissions.length;
+    stats.tabs.requested = normalizedData.tabSettings.length;
+    stats.setupEntityAccess.requested = normalizedData.setupEntityAccess.length;
+
+    // Validation phase: totalItems not yet known (indeterminate progress)
+    const validationProgress = onProgress ? (msg: string) => onProgress(msg, 0, 0) : undefined;
+
     normalizedData = {
       ...normalizedData,
       fieldPermissions: await validateFieldPermissions(
@@ -872,7 +903,7 @@ export async function createPermissionSet(
         sessionId,
         normalizedData.fieldPermissions,
         warnings,
-        onProgress,
+        validationProgress,
       ),
     };
     normalizedData = {
@@ -887,7 +918,7 @@ export async function createPermissionSet(
       sessionId,
       normalizedData.objectPermissions,
       warnings,
-      onProgress,
+      validationProgress,
     );
 
     // Remove field permissions for objects that were filtered out during object validation
@@ -908,6 +939,11 @@ export async function createPermissionSet(
       fieldPermissions: filteredFieldPermissions,
     };
 
+    // Record stats after all validation
+    stats.fields.validated = normalizedData.fieldPermissions.length;
+    stats.objects.requested = inputObjectCount;
+    stats.objects.autoAdded = Math.max(0, normalizedData.objectPermissions.length - inputObjectCount);
+
     const totalPreparedPermissions =
       normalizedData.objectPermissions.length +
       normalizedData.fieldPermissions.length +
@@ -919,8 +955,13 @@ export async function createPermissionSet(
       throw new Error('No valid permissions remained after validation');
     }
 
+    let completedItems = 0;
+    const emitProgress = (msg: string) => {
+      onProgress?.(msg, completedItems, totalPreparedPermissions);
+    };
+
     // Step 1: Create the Permission Set
-    onProgress?.('Creating Permission Set...');
+    emitProgress('Creating Permission Set...');
     const psUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSet`;
     const psResponse = await fetchWithRetry(psUrl, {
       method: 'POST',
@@ -936,9 +977,9 @@ export async function createPermissionSet(
     const psResult = await psResponse.json();
     permSetId = psResult.id;
 
-    // Step 2: Object Permissions
+    // Step 2: Object Permissions (sequential within each pass for dependency resolution)
     if (normalizedData.objectPermissions.length > 0) {
-      onProgress?.(`Adding ${normalizedData.objectPermissions.length} Object Permissions...`);
+      emitProgress(`Adding ${normalizedData.objectPermissions.length} Object Permissions...`);
     }
     const createdObjects = new Set<string>();
     let pendingObjectPermissions = normalizedData.objectPermissions.map((permission) => ({
@@ -949,7 +990,7 @@ export async function createPermissionSet(
 
     for (let pass = 1; pendingObjectPermissions.length > 0 && pass <= maxObjectPasses; pass++) {
       if (pass > 1) {
-        onProgress?.(`Retrying ${pendingObjectPermissions.length} deferred Object Permissions (pass ${pass})...`);
+        emitProgress(`Retrying ${pendingObjectPermissions.length} deferred Object Permissions (pass ${pass})...`);
       }
 
       let createdInPass = 0;
@@ -958,7 +999,7 @@ export async function createPermissionSet(
       for (let i = 0; i < pendingObjectPermissions.length; i++) {
         const obj = pendingObjectPermissions[i]!.permission;
         if (i > 0 && i % 10 === 0) {
-          onProgress?.(`Adding Object Permissions (${i}/${pendingObjectPermissions.length})...`);
+          emitProgress(`Adding Object Permissions (${i}/${pendingObjectPermissions.length})...`);
         }
 
         const opUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/ObjectPermissions`;
@@ -980,6 +1021,9 @@ export async function createPermissionSet(
         if (opResponse.ok) {
           createdInPass++;
           createdObjects.add(obj.object.toLowerCase());
+          stats.objects.applied++;
+          completedItems++;
+          applied.push({ type: 'ObjectPermission', name: obj.object, detail: 'Created' });
           continue;
         }
 
@@ -987,6 +1031,10 @@ export async function createPermissionSet(
         if (isDuplicateInsertError(error)) {
           createdInPass++;
           createdObjects.add(obj.object.toLowerCase());
+          stats.objects.applied++;
+          stats.objects.duplicates++;
+          completedItems++;
+          applied.push({ type: 'ObjectPermission', name: obj.object, detail: 'Already exists' });
           continue;
         }
 
@@ -1002,6 +1050,7 @@ export async function createPermissionSet(
             );
 
             if (!createdObjects.has(parentKey) && !alreadyPending) {
+              stats.objects.autoAdded++;
               // Auto-add parent with Read-only permission
               deferred.unshift({
                 permission: {
@@ -1026,6 +1075,7 @@ export async function createPermissionSet(
           continue;
         }
 
+        completedItems++;
         failures.push({ type: 'ObjectPermission', name: obj.object, error });
       }
 
@@ -1038,6 +1088,7 @@ export async function createPermissionSet(
         for (const deferredPermission of deferred) {
           // Skip auto-added parents that were never attempted (empty lastError)
           if (!deferredPermission.lastError) continue;
+          completedItems++;
           failures.push({
             type: 'ObjectPermission',
             name: deferredPermission.permission.object,
@@ -1051,33 +1102,42 @@ export async function createPermissionSet(
       pendingObjectPermissions = deferred;
     }
 
-    // Step 3: Field Permissions
+    // Step 3: Field Permissions (parallel batches)
     if (normalizedData.fieldPermissions.length > 0) {
-      onProgress?.(`Adding ${normalizedData.fieldPermissions.length} Field Permissions...`);
-    }
-    for (let i = 0; i < normalizedData.fieldPermissions.length; i++) {
-      const field = normalizedData.fieldPermissions[i]!;
-      if (i > 0 && i % 25 === 0) onProgress?.(`Adding Field Permissions (${i}/${normalizedData.fieldPermissions.length})...`);
-      const fpUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/FieldPermissions`;
-      const fpResponse = await fetchWithRetry(fpUrl, {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          ParentId: permSetId, SobjectType: field.sobjectType,
-          Field: field.field, PermissionsRead: field.readable, PermissionsEdit: field.editable,
-        }),
-      });
-      if (!fpResponse.ok) {
-        const error = await parseError(fpResponse);
-        if (isDuplicateInsertError(error)) {
-          continue;
-        }
-        failures.push({ type: 'FieldPermission', name: field.field, error });
-      }
+      emitProgress(`Adding ${normalizedData.fieldPermissions.length} Field Permissions...`);
+      await executeInBatches(
+        normalizedData.fieldPermissions,
+        async (field) => {
+          const fpUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/FieldPermissions`;
+          const fpResponse = await fetchWithRetry(fpUrl, {
+            method: 'POST', headers,
+            body: JSON.stringify({
+              ParentId: permSetId, SobjectType: field.sobjectType,
+              Field: field.field, PermissionsRead: field.readable, PermissionsEdit: field.editable,
+            }),
+          });
+          completedItems++;
+          if (!fpResponse.ok) {
+            const error = await parseError(fpResponse);
+            if (isDuplicateInsertError(error)) {
+              stats.fields.applied++;
+              stats.fields.duplicates++;
+              applied.push({ type: 'FieldPermission', name: field.field, detail: 'Already exists' });
+              return;
+            }
+            failures.push({ type: 'FieldPermission', name: field.field, error });
+          } else {
+            stats.fields.applied++;
+            applied.push({ type: 'FieldPermission', name: field.field, detail: `${field.readable ? 'Read' : ''}${field.editable ? ' Edit' : ''}`.trim() });
+          }
+        },
+        (done, total) => emitProgress(`Adding Field Permissions (${done}/${total})...`),
+      );
     }
 
-    // Step 4: User Permissions (single PATCH)
+    // Step 4: User Permissions (batch PATCH with individual fallback)
     if (normalizedData.userPermissions.length > 0) {
-      onProgress?.(`Applying ${normalizedData.userPermissions.length} User Permissions...`);
+      emitProgress(`Applying ${normalizedData.userPermissions.length} User Permissions...`);
       const permFields: Record<string, boolean> = {};
       for (const up of normalizedData.userPermissions) permFields[up.name] = true;
       const patchUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSet/${permSetId}`;
@@ -1085,59 +1145,108 @@ export async function createPermissionSet(
         method: 'PATCH', headers,
         body: JSON.stringify(permFields),
       });
-      if (!patchResponse.ok) {
-        failures.push({ type: 'UserPermissions', name: 'batch', error: await parseError(patchResponse) });
+      if (patchResponse.ok) {
+        stats.userPermissions.applied = normalizedData.userPermissions.length;
+        completedItems += normalizedData.userPermissions.length;
+        for (const up of normalizedData.userPermissions) {
+          applied.push({ type: 'UserPermission', name: up.name, detail: 'Enabled' });
+        }
+      } else {
+        // Batch failed — fall back to individual permissions
+        const batchError = await parseError(patchResponse);
+        warnings.push({ type: 'UserPermission', name: 'batch', error: `Batch apply failed (${batchError}), retrying individually` });
+        emitProgress('Batch User Permissions failed. Retrying individually...');
+        for (const up of normalizedData.userPermissions) {
+          const singleResponse = await fetchWithRetry(patchUrl, {
+            method: 'PATCH', headers,
+            body: JSON.stringify({ [up.name]: true }),
+          });
+          completedItems++;
+          if (singleResponse.ok) {
+            stats.userPermissions.applied++;
+            applied.push({ type: 'UserPermission', name: up.name, detail: 'Enabled' });
+          } else {
+            const singleError = await parseError(singleResponse);
+            failures.push({ type: 'UserPermission', name: up.name, error: singleError });
+            stats.userPermissions.failed++;
+          }
+        }
       }
+      emitProgress(`Applied User Permissions (${stats.userPermissions.applied}/${normalizedData.userPermissions.length})...`);
     }
 
-    // Step 5: Tab Settings
+    // Step 5: Tab Settings (parallel batches)
     if (normalizedData.tabSettings.length > 0) {
-      onProgress?.(`Adding ${normalizedData.tabSettings.length} Tab Settings...`);
-    }
-    for (let i = 0; i < normalizedData.tabSettings.length; i++) {
-      const tab = normalizedData.tabSettings[i]!;
-      if (i > 0 && i % 25 === 0) onProgress?.(`Adding Tab Settings (${i}/${normalizedData.tabSettings.length})...`);
-      const tabUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSetTabSetting`;
-      const tabResponse = await fetchWithRetry(tabUrl, {
-        method: 'POST', headers,
-        body: JSON.stringify({ ParentId: permSetId, Name: tab.name, Visibility: tab.visibility }),
-      });
-      if (!tabResponse.ok) {
-        const error = await parseError(tabResponse);
-        if (isDuplicateInsertError(error)) {
-          continue;
-        }
-        failures.push({ type: 'TabSetting', name: tab.name, error });
-      }
+      emitProgress(`Adding ${normalizedData.tabSettings.length} Tab Settings...`);
+      await executeInBatches(
+        normalizedData.tabSettings,
+        async (tab) => {
+          const tabUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/PermissionSetTabSetting`;
+          const tabResponse = await fetchWithRetry(tabUrl, {
+            method: 'POST', headers,
+            body: JSON.stringify({ ParentId: permSetId, Name: tab.name, Visibility: tab.visibility }),
+          });
+          completedItems++;
+          if (!tabResponse.ok) {
+            const error = await parseError(tabResponse);
+            if (isDuplicateInsertError(error)) {
+              stats.tabs.applied++;
+              stats.tabs.duplicates++;
+              applied.push({ type: 'TabSetting', name: tab.name, detail: tab.visibility });
+              return;
+            }
+            failures.push({ type: 'TabSetting', name: tab.name, error });
+          } else {
+            stats.tabs.applied++;
+            applied.push({ type: 'TabSetting', name: tab.name, detail: tab.visibility });
+          }
+        },
+        (done, total) => emitProgress(`Adding Tab Settings (${done}/${total})...`),
+      );
     }
 
-    // Step 6: Setup Entity Access
+    // Step 6: Setup Entity Access (parallel batches)
     if (normalizedData.setupEntityAccess.length > 0) {
-      onProgress?.(`Adding ${normalizedData.setupEntityAccess.length} Setup Entity Access records...`);
-    }
-    for (let i = 0; i < normalizedData.setupEntityAccess.length; i++) {
-      const sea = normalizedData.setupEntityAccess[i]!;
-      if (i > 0 && i % 25 === 0) onProgress?.(`Adding Setup Entity Access (${i}/${normalizedData.setupEntityAccess.length})...`);
-      const seaUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/SetupEntityAccess`;
-      const seaResponse = await fetchWithRetry(seaUrl, {
-        method: 'POST', headers,
-        body: JSON.stringify({ ParentId: permSetId, SetupEntityId: sea.entityId }),
-      });
-      if (!seaResponse.ok) {
-        const error = await parseError(seaResponse);
-        if (isDuplicateInsertError(error)) {
-          continue;
-        }
-        failures.push({ type: 'SetupEntityAccess', name: sea.entityType, error });
-      }
+      emitProgress(`Adding ${normalizedData.setupEntityAccess.length} Setup Entity Access records...`);
+      await executeInBatches(
+        normalizedData.setupEntityAccess,
+        async (sea) => {
+          const seaUrl = `${instanceUrl}/services/data/${API_VERSION}/sobjects/SetupEntityAccess`;
+          const seaResponse = await fetchWithRetry(seaUrl, {
+            method: 'POST', headers,
+            body: JSON.stringify({ ParentId: permSetId, SetupEntityId: sea.entityId }),
+          });
+          completedItems++;
+          if (!seaResponse.ok) {
+            const error = await parseError(seaResponse);
+            if (isDuplicateInsertError(error)) {
+              stats.setupEntityAccess.applied++;
+              stats.setupEntityAccess.duplicates++;
+              applied.push({ type: 'SetupEntityAccess', name: sea.entityType, detail: sea.entityId });
+              return;
+            }
+            failures.push({ type: 'SetupEntityAccess', name: sea.entityType, error });
+          } else {
+            stats.setupEntityAccess.applied++;
+            applied.push({ type: 'SetupEntityAccess', name: sea.entityType, detail: sea.entityId });
+          }
+        },
+        (done, total) => emitProgress(`Adding Setup Entity Access (${done}/${total})...`),
+      );
     }
 
-    if (failures.length > 0) {
-      return finalizeFailure();
+    const hasFailures = failures.length > 0;
+    const hasWarnings = warnings.length > 0;
+    if (hasFailures && hasWarnings) {
+      emitProgress('Permission Set created with some failures and warnings');
+    } else if (hasFailures) {
+      emitProgress('Permission Set created with some failures');
+    } else if (hasWarnings) {
+      emitProgress('Permission Set created with warnings');
+    } else {
+      emitProgress('Permission Set created successfully');
     }
-
-    onProgress?.(warnings.length > 0 ? 'Permission Set created with warnings' : 'Permission Set created successfully');
-    return { id: permSetId, success: true, rolledBack: false, failures: [], warnings };
+    return { id: permSetId, success: true, rolledBack: false, failures, warnings, applied, stats };
   } catch (error) {
     if (!permSetId) {
       throw error;

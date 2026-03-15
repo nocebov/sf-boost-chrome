@@ -5,7 +5,7 @@ import { tokens } from './design-tokens';
 /** Create a modal with backdrop, card, and close handler */
 export function createModal(
   id: string,
-  options: { width?: string; maxHeight?: string } = {}
+  options: { width?: string; maxHeight?: string; onBeforeClose?: () => boolean } = {}
 ): { backdrop: HTMLDivElement; card: HTMLDivElement; close: () => void } {
   const { width = '560px', maxHeight = 'calc(100vh - 40px)' } = options;
   const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -50,6 +50,7 @@ export function createModal(
 
   const close = () => {
     if (isClosed) return;
+    if (options.onBeforeClose && !options.onBeforeClose()) return;
     isClosed = true;
     cleanup();
     backdrop.style.opacity = '0';

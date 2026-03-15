@@ -196,7 +196,7 @@ function createPaletteUI() {
   const card = document.createElement('div');
   card.setAttribute('style', `
     background: ${tokens.color.surfaceBase}; border-radius: ${tokens.radius.xl};
-    width: 560px; max-height: 420px;
+    width: 560px; max-height: 520px;
     box-shadow: ${tokens.shadow.lg};
     display: flex; flex-direction: column;
     overflow: hidden;
@@ -235,7 +235,7 @@ function createPaletteUI() {
   const results = document.createElement('div');
   results.setAttribute('style', `
     overflow-y: auto; flex: 1;
-    max-height: 340px;
+    max-height: 440px;
     scrollbar-width: thin;
     scrollbar-color: ${tokens.color.borderMuted} transparent;
   `);
@@ -254,14 +254,18 @@ function createPaletteUI() {
   let activeQuickActions: QuickAction[] = [];
   let editMode = false;
 
-  function activateQuickAction(qa: QuickAction) {
+  function activateQuickAction(qa: QuickAction, newTab = false) {
     if (qa.subMode) {
       enterSubModeByName(qa.subMode);
     } else if (qa.actionId === 'toggle-debug-log') {
       handleToggleDebugLog();
     } else if (qa.customUrl) {
       closePalette();
-      window.location.href = qa.customUrl;
+      if (newTab) {
+        window.open(qa.customUrl, '_blank');
+      } else {
+        window.location.href = qa.customUrl;
+      }
     }
   }
 
@@ -695,7 +699,7 @@ function createPaletteUI() {
     input.focus();
   }
 
-  function executeCommand(cmd: PaletteCommand) {
+  function executeCommand(cmd: PaletteCommand, newTab = false) {
     if (cmd.id === 'toggle-debug-log') {
       handleToggleDebugLog();
       return;
@@ -709,7 +713,11 @@ function createPaletteUI() {
     if (cmd.action) {
       cmd.action();
     } else if (cmd.path) {
-      window.location.href = cmd.path;
+      if (newTab) {
+        window.open(cmd.path, '_blank');
+      } else {
+        window.location.href = cmd.path;
+      }
     }
   }
 
@@ -816,17 +824,18 @@ function createPaletteUI() {
       renderResults(currentCommands);
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      const newTab = e.ctrlKey || e.metaKey;
       if (mode === 'soql-query' && !soqlExecuted) {
         executeSoqlQuery();
       } else {
         const cmd = currentCommands[selectedIndex];
-        if (cmd) executeCommand(cmd);
+        if (cmd) executeCommand(cmd, newTab);
       }
     } else if (mode === 'commands' && input.value === '' && /^[1-9]$/.test(e.key)) {
       const matched = activeQuickActions.find((qa) => qa.key === e.key);
       if (matched) {
         e.preventDefault();
-        activateQuickAction(matched);
+        activateQuickAction(matched, e.ctrlKey || e.metaKey);
       }
     }
   });
@@ -836,7 +845,7 @@ function createPaletteUI() {
     if (item) {
       const idx = parseInt(item.dataset.index ?? '0', 10);
       const cmd = currentCommands[idx];
-      if (cmd) executeCommand(cmd);
+      if (cmd) executeCommand(cmd, e.ctrlKey || e.metaKey);
     }
   });
 

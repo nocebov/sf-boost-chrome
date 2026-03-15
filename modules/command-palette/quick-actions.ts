@@ -68,7 +68,8 @@ export function renderQuickActionBar(
     'style',
     `
     font-size: ${tokens.font.size.sm};
-    color: ${tokens.color.textMuted};
+    color: ${tokens.color.primary};
+    font-weight: ${tokens.font.weight.medium};
     white-space: nowrap;
     padding-right: ${tokens.space.xs};
     align-self: center;
@@ -77,13 +78,14 @@ export function renderQuickActionBar(
   container.appendChild(label);
 
   for (const qa of actions) {
+    const isSearchable = Boolean(qa.subMode);
     const pill = document.createElement('button');
     pill.setAttribute(
       'style',
       `
       display: inline-flex; align-items: center; gap: ${tokens.space.xs};
       padding: ${tokens.space.xs} ${tokens.space.lg};
-      border: 1px solid ${tokens.color.borderDefault};
+      border: 1px solid ${isSearchable ? tokens.color.primaryBorder : tokens.color.borderDefault};
       border-radius: ${tokens.radius.pill};
       background: ${tokens.color.surfaceBase};
       color: ${tokens.color.textSecondary};
@@ -151,7 +153,7 @@ export function renderQuickActionBar(
       });
       pill.addEventListener('mouseleave', () => {
         pill.style.background = tokens.color.surfaceBase;
-        pill.style.borderColor = tokens.color.borderDefault;
+        pill.style.borderColor = isSearchable ? tokens.color.primaryBorder : tokens.color.borderDefault;
       });
       pill.addEventListener('click', () => onActivate(qa));
     }

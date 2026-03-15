@@ -56,6 +56,14 @@ export interface MessageMap {
       rolledBack: boolean;
       failures: Array<{ type: string; name: string; error: string }>;
       warnings: Array<{ type: string; name: string; error: string }>;
+      applied?: Array<{ type: string; name: string; detail: string }>;
+      stats?: {
+        objects: { requested: number; applied: number; duplicates: number; autoAdded: number };
+        fields: { requested: number; validated: number; applied: number; duplicates: number };
+        userPermissions: { requested: number; applied: number; failed: number };
+        tabs: { requested: number; applied: number; duplicates: number };
+        setupEntityAccess: { requested: number; applied: number; duplicates: number };
+      };
     };
   };
 }
@@ -91,7 +99,7 @@ export async function sendMessage<T extends MessageType>(
 
 export function createPermissionSetViaPort(
   data: MessageMap['createPermissionSet']['data'],
-  onProgress: (message: string) => void,
+  onProgress: (message: string, completedItems?: number, totalItems?: number) => void,
 ): Promise<MessageMap['createPermissionSet']['response']> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -100,11 +108,13 @@ export function createPermissionSetViaPort(
     port.onMessage.addListener((msg: {
       type: 'progress' | 'complete' | 'error';
       message?: string;
+      completedItems?: number;
+      totalItems?: number;
       result?: MessageMap['createPermissionSet']['response'];
       error?: string;
     }) => {
       if (msg.type === 'progress' && msg.message) {
-        onProgress(msg.message);
+        onProgress(msg.message, msg.completedItems, msg.totalItems);
       } else if (msg.type === 'complete' && !settled) {
         settled = true;
         resolve(msg.result!);

@@ -162,8 +162,8 @@ export default defineBackground(() => {
         }
         const instanceUrl = assertSenderMatchesInstanceUrl(sender, requestedInstanceUrl);
         const result = await withSession(instanceUrl, (sessionId) =>
-          createPermissionSet(instanceUrl, sessionId, payload, (progressMsg) => {
-            safeSend({ type: 'progress', message: progressMsg });
+          createPermissionSet(instanceUrl, sessionId, payload, (progressMsg, completedItems, totalItems) => {
+            safeSend({ type: 'progress', message: progressMsg, completedItems, totalItems });
           }),
         );
         safeSend({ type: 'complete', result });
@@ -174,11 +174,30 @@ export default defineBackground(() => {
   });
 
   // Handle command palette keyboard shortcut
+  const COMMAND_EVENT_MAP: Record<string, string> = {
+    'show-command-palette': 'sfboost:toggle-palette',
+    'toggle-field-inspector': 'sfboost:toggle-inspector',
+  };
+
   chrome.commands.onCommand.addListener(async (command: string) => {
-    if (command === 'show-command-palette' || command === 'toggle-field-inspector') {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) {
-        chrome.tabs.sendMessage(tab.id, { type: command });
+    const eventName = COMMAND_EVENT_MAP[command];
+    if (!eventName) return;
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: command });
+    } catch {
+      // Content script message channel unavailable — dispatch event directly
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (name: string) => document.dispatchEvent(new CustomEvent(name)),
+          args: [eventName],
+        });
+      } catch (e) {
+        logger.warn(`Failed to deliver command "${command}": ${e}`);
       }
     }
   });
