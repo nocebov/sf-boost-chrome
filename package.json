@@ -2,8 +2,27 @@
   "name": "sf-boost-chrome",
   "description": "Salesforce productivity toolkit for admins and developers",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
+  "license": "MIT",
+  "author": "nocebov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nocebov/sf-boost-chrome.git"
+  },
+  "homepage": "https://github.com/nocebov/sf-boost-chrome#readme",
+  "bugs": {
+    "url": "https://github.com/nocebov/sf-boost-chrome/issues"
+  },
+  "keywords": [
+    "salesforce",
+    "chrome-extension",
+    "productivity",
+    "admin",
+    "developer",
+    "wxt",
+    "manifest-v3"
+  ],
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",

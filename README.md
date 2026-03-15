@@ -1,8 +1,14 @@
 # SF Boost — Salesforce Productivity Toolkit
 
+[![CI](https://github.com/nocebov/sf-boost-chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/nocebov/sf-boost-chrome/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](CHANGELOG.md)
+
 **SF Boost** is a Chrome Extension focused on one job: making everyday Salesforce admin and developer work faster inside the native UI.
 
-> **Version 0.3.0** · Built with [WXT](https://wxt.dev/) · TypeScript · Bun
+> Built with [WXT](https://wxt.dev/) · TypeScript · Bun
+
+![SF Boost popup showing all modules with toggles](screenshots/5445453.jpg)
 
 ---
 
@@ -25,6 +31,10 @@ Press `Alt+Shift+S`, start typing, hit Enter. Works for:
   7. **SOQL Query** — type and run ad-hoc SOQL queries, click a result to copy its ID
 
 Navigate with arrow keys, confirm with Enter, close with Escape. Backspace on empty input exits a sub-mode.
+
+![Command Palette — main mode with quick-action pills](screenshots/image_2026-03-15_20-32-34.jpg)
+
+![Command Palette — Find Flow sub-mode showing flows with type and API name](screenshots/image_2026-03-15_16-50-09.jpg)
 
 ---
 
@@ -82,6 +92,8 @@ Open any Profile page (Enhanced or Classic) and click **"Extract to Permission S
 3. **Name** — pre-filled with `{ProfileName}_Extracted`, validates API naming rules, checks for duplicate names via Tooling API
 4. **Execution** — a 10-stage progress view with live status: Prepare → Validate Fields → Validate Objects → Create PermSet → Apply Object Access → Apply Field Access → Apply User Permissions → Apply Tabs → Apply Setup Access → Finish
 5. **Result** — success/failure banner with a direct link to the new Permission Set. Notices grouped by type (converted to read-only, missing fields, non-permissionable, auto-resolved dependencies, etc.). Export options: **Copy for Excel** (tab-separated) and **Download CSV**
+
+![Profile → Permission Set — execution result with stage breakdown and issue summary](screenshots/image_2026-03-15_16-49-21.jpg)
 
 > Disabled by default — enable in the extension popup.
 
@@ -167,6 +179,19 @@ Store submission artifacts:
 - **TypeScript** — full type safety across all modules
 - **Bun** — fast package manager and runtime
 - **Salesforce REST & Tooling APIs** — for metadata search, Debug Log toggle, Dependency Inspector, and Profile extraction
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read the [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
+
+- [Report a bug](https://github.com/nocebov/sf-boost-chrome/issues/new?template=bug_report.md)
+- [Request a feature](https://github.com/nocebov/sf-boost-chrome/issues/new?template=feature_request.md)
+
+## License
+
+[MIT](LICENSE)
 
 ---
 
