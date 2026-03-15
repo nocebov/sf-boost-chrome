@@ -29,6 +29,8 @@
     "build:reload": "bun run build && bun run scripts/reload-extension.ts",
     "zip": "wxt zip",
     "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:smoke": "bun run scripts/smoke-test.mjs",
     "postinstall": "wxt prepare"
   },
@@ -37,6 +39,7 @@
     "puppeteer-core": "^24.6.1",
     "selfsigned": "^3.0.1",
     "typescript": "^5.8.0",
+    "vitest": "^4.1.0",
     "wxt": "^0.20.0"
   }
 }

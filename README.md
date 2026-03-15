@@ -19,18 +19,15 @@
 Jump anywhere in Setup — or search Salesforce metadata — without clicking through menus.
 
 Press `Alt+Shift+S`, start typing, hit Enter. Works for:
-- **70+ Setup pages** — Users, Profiles, Roles, Permission Sets, Object Manager, Picklist Value Sets, Fields, Apex Classes, Triggers, LWC, Visualforce, Debug Logs, Developer Console, Reports, Dashboards, and more
-- **Quick Actions** — copy your current Record ID or Page URL directly from the palette
-- **Quick Action pills** (press number keys `1`–`7` on empty input):
-  1. **Profile Search** — SOQL-powered search across all Profiles
-  2. **Permission Set Search** — search across all custom Permission Sets
-  3. **Flow Search** — search across all flows with type labels (Screen Flow, Autolaunched, Scheduled, etc.)
-  4. **Apex Class Search** — Tooling API search across all Apex Classes
-  5. **Apex Trigger Search** — Tooling API search across all Apex Triggers
-  6. **Toggle Debug Log** — enable/disable a 30-minute FINEST debug log for the current user
-  7. **SOQL Query** — type and run ad-hoc SOQL queries, click a result to copy its ID
+- **50+ Setup shortcuts** — Users, Profiles, Roles, Permission Sets, Object Manager, Schema Builder, Picklists, Flows, Apex, LWC, Visualforce, Debug Logs, Change Sets, Security, Data Management, and more
+- **Search sub-modes** — Profiles, Permission Sets, Flows, Apex Classes, Apex Triggers
+- **Actions** — Toggle Debug Log (30 min), Quick SOQL Query, Copy current Record ID, Copy current page URL, open Developer Console
+- **Quick action bar** — click the pills at the top, or press number keys `1`–`9` (when the input is empty). Click ✎ to customize: hide built-ins, add your own URL shortcuts, or reset to defaults
 
 Navigate with arrow keys, confirm with Enter, close with Escape. Backspace on empty input exits a sub-mode.
+Hold `Ctrl`/`Cmd` when selecting an item to open it in a new tab.
+
+Default quick actions (when not customized): `1` Profiles · `2` Permission Sets · `3` Flows · `4` Classes · `5` Triggers · `6` Debug Log.
 
 ![Command Palette — main mode with quick-action pills](screenshots/image_2026-03-15_20-32-34.jpg)
 
@@ -38,11 +35,11 @@ Navigate with arrow keys, confirm with Enter, close with Escape. Backspace on em
 
 ---
 
-### Field Inspector `Alt+Shift+F`
+### Field Inspector
 
-See field API names directly on any record page — no more digging through Object Manager.
+See field API names directly on any **Lightning record page** — no more digging through Object Manager.
 
-Press `Alt+Shift+F` or click the `{ }` button in the bottom-right corner. Blue API name badges appear next to every field label. **Hover** the badge to see the field type and whether it's required. **Click** the badge to copy the API name to clipboard instantly.
+When enabled (on by default), SF Boost automatically adds blue API-name badges next to supported field labels on **Lightning record pages**. **Hover** the badge to see field type + required. **Click** the badge to copy the API name instantly.
 
 ---
 
@@ -50,8 +47,8 @@ Press `Alt+Shift+F` or click the `{ }` button in the bottom-right corner. Blue A
 
 One-click copy of Record IDs on record pages and list views.
 
-- **Record pages** — a small clipboard icon appears next to the record header. Click it and the 18-character ID is in your clipboard.
-- **List views** — a "Copy ID" pill appears on row hover. Click it to copy that row's record ID.
+- **Record pages** — a small clipboard icon appears next to the record header. Click it and the Record ID is in your clipboard.
+- **List views** — a small copy icon appears next to the record name (fades in on row hover). Click it to copy that row's record ID.
 
 ---
 
@@ -77,7 +74,7 @@ A color-coded badge in the top-left corner that tells you exactly which org you'
 | Scratch | Teal / Cyan |
 | Trailhead | Purple |
 
-Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, `[DEV]`, `[SCRATCH]`, `[TRAIL]`). Supports custom labels, badge colors, and text colors per org via `chrome.storage.sync`. The badge is automatically hidden on Flow Builder pages to avoid canvas overlap.
+Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, `[DEV]`, `[SCRATCH]`, `[TRAIL]`). Supports custom labels, badge colors, and text colors per org via `chrome.storage.sync`. The badge is automatically hidden on Flow Builder and Lightning App Builder pages to avoid canvas overlap.
 
 ---
 
@@ -144,6 +141,10 @@ bun run dev
 # Build for production
 bun run build
 
+# Build for production and reload the extension in Chrome (optional)
+# Requires launching Chrome with a remote debugging port and setting EXTENSION_ID in .env.local
+bun run build:reload
+
 # Run popup/content smoke test against the built extension
 bun run test:smoke
 
@@ -161,7 +162,7 @@ Load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` 
 - The `sid` cookie is read only inside Chrome via the `cookies` permission. It is used to authenticate direct requests from the extension to Salesforce, not to any developer-operated backend.
 - API-assisted features run only against the org open in the active Salesforce tab.
 - SF Boost does not send Salesforce data to third-party servers.
-- Settings are stored in `chrome.storage.sync`, and describe-cache data is stored in `chrome.storage.local`.
+- Settings are stored in `chrome.storage.sync` (module toggles, per-org badge overrides, Command Palette quick actions), and describe-cache data is stored in `chrome.storage.local`.
 - The extension is built around a single purpose: improving day-to-day Salesforce admin and developer workflows inside the native Salesforce UI.
 
 Store submission artifacts:
