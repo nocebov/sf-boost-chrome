@@ -3,7 +3,7 @@ import { fuzzySearch } from '../modules/command-palette/search-engine';
 import type { PaletteCommand } from '../modules/command-palette/setup-commands';
 
 function cmd(label: string, keywords: string[] = [], path = '/test'): PaletteCommand {
-  return { label, keywords, path };
+  return { id: label.toLowerCase().replace(/\s+/g, '-'), label, keywords, category: 'test', path };
 }
 
 const testCommands: PaletteCommand[] = [
