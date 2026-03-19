@@ -1,8 +1,9 @@
 # SF Boost — Salesforce Productivity Toolkit
 
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-SF_Boost-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/sf-boost/eiboagfkpffiagbjljpkkpehidoihegh)
 [![CI](https://github.com/nocebov/sf-boost-chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/nocebov/sf-boost-chrome/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](CHANGELOG.md)
 
 **SF Boost** is a Chrome Extension focused on one job: making everyday Salesforce admin and developer work faster inside the native UI.
 
@@ -126,7 +127,15 @@ Once enabled, the bar is hidden via CSS injection and stays hidden across SPA na
 
 ---
 
-## Installation & Development
+## Install
+
+**[Get SF Boost from the Chrome Web Store](https://chromewebstore.google.com/detail/sf-boost/eiboagfkpffiagbjljpkkpehidoihegh)** — one click, no setup required.
+
+For detailed usage instructions, see the **[User Guide](docs/user-guide.md)**.
+
+---
+
+## Development
 
 ```bash
 # Install dependencies
@@ -165,12 +174,12 @@ Load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` 
 - Settings are stored in `chrome.storage.sync` (module toggles, per-org badge overrides, Command Palette quick actions), and describe-cache data is stored in `chrome.storage.local`.
 - The extension is built around a single purpose: improving day-to-day Salesforce admin and developer workflows inside the native Salesforce UI.
 
-Store submission artifacts:
-- Privacy policy: [docs/privacy-policy.md](docs/privacy-policy.md)
-- Reviewer notes: [docs/reviewer-notes.md](docs/reviewer-notes.md)
-- Support: [docs/support.md](docs/support.md)
-- Admin packet: [docs/admin-packet.md](docs/admin-packet.md)
-- Release checklist: [docs/store-release-checklist.md](docs/store-release-checklist.md)
+Documentation:
+- **[User Guide](docs/user-guide.md)** — getting started, module details, FAQ, troubleshooting
+- [Privacy Policy](docs/privacy-policy.md)
+- [Admin Packet](docs/admin-packet.md)
+- [Support](docs/support.md)
+- [Reviewer Notes](docs/reviewer-notes.md)
 
 ---
 

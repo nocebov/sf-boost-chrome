@@ -2,7 +2,7 @@
   "name": "sf-boost-chrome",
   "description": "Salesforce productivity toolkit for admins and developers",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "license": "MIT",
   "author": "nocebov",

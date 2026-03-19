@@ -8,6 +8,51 @@ import { tokens } from '../../lib/design-tokens';
 const BADGE_ID = 'sfboost-env-badge';
 let originalTitle = '';
 let currentCtx: ModuleContext | null = null;
+
+// DevOps bar adaptation
+const DEVOPS_BAR_QUERY = 'devops_center-org-info, devops_center-panel-button, devops_center-app-container';
+let devopsAdaptObserver: MutationObserver | null = null;
+
+function computeBadgeTop(): string {
+  const el = document.querySelector(DEVOPS_BAR_QUERY);
+  if (!el) return tokens.space.md;
+
+  const container =
+    el.closest<HTMLElement>('lightning-layout.navBar-container') ??
+    (el.parentElement as HTMLElement | null) ??
+    (el as HTMLElement);
+
+  const style = window.getComputedStyle(container);
+  if (style.display === 'none' || style.visibility === 'hidden') return tokens.space.md;
+
+  const rect = container.getBoundingClientRect();
+  if (rect.height === 0) return tokens.space.md;
+
+  return `${Math.round(rect.bottom) + 4}px`;
+}
+
+function updateBadgeTop(): void {
+  const badge = document.getElementById(BADGE_ID);
+  if (badge) badge.style.top = computeBadgeTop();
+}
+
+function startDevopsAdaptObserver(): void {
+  if (devopsAdaptObserver) return;
+  devopsAdaptObserver = new MutationObserver(() => {
+    requestAnimationFrame(updateBadgeTop);
+  });
+  devopsAdaptObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['data-sfboost-hide-devops-target', 'style'],
+  });
+}
+
+function stopDevopsAdaptObserver(): void {
+  devopsAdaptObserver?.disconnect();
+  devopsAdaptObserver = null;
+}
 // Default color scheme per org type
 const ENV_COLORS: Record<OrgType, { bg: string; text: string; label: string }> = {
   production: { bg: tokens.color.envProduction, text: tokens.color.textOnPrimary, label: 'PRODUCTION' },
@@ -78,7 +123,7 @@ async function injectBadge(ctx: ModuleContext): Promise<void> {
   badge.id = BADGE_ID;
   badge.setAttribute('style', `
     position: fixed;
-    top: ${tokens.space.md};
+    top: ${computeBadgeTop()};
     left: 80px;
     z-index: ${tokens.zIndex.badge};
     padding: 2px 10px;
@@ -133,6 +178,7 @@ const environmentSafeguard: SFBoostModule = {
     currentCtx = ctx;
     if (window.top !== window.self) return;
     await injectBadge(ctx);
+    startDevopsAdaptObserver();
   },
 
   async onNavigate(ctx: ModuleContext) {
@@ -155,6 +201,7 @@ const environmentSafeguard: SFBoostModule = {
   },
 
   destroy() {
+    stopDevopsAdaptObserver();
     removeBadge();
     currentCtx = null;
   },

@@ -1,86 +1,118 @@
 import { getEnabledModules, setEnabledModules } from '../../lib/storage';
 import { MODULE_CATALOG } from '../../modules/catalog';
+import type { ModuleAccessLevel } from '../../modules/catalog';
 
 const REPO_URL = 'https://github.com/nocebov/sf-boost-chrome';
 const PRIVACY_POLICY_URL = `${REPO_URL}/blob/master/docs/privacy-policy.md`;
 const SUPPORT_URL = `${REPO_URL}/blob/master/docs/support.md`;
 
-const container = document.getElementById('modules');
+const modulesList = document.getElementById('modules-list');
+const headerCounts = document.getElementById('header-counts');
 
-async function render() {
-  if (!container) return;
+const ACCESS_LABELS: Record<ModuleAccessLevel, string> = {
+  'ui-only': 'UI',
+  'read-only': 'Read',
+  'write-capable': 'Write',
+};
 
-  const enabledIds = await getEnabledModules();
-  container.textContent = '';
+function createModuleItem(
+  mod: (typeof MODULE_CATALOG)[number],
+  isEnabled: boolean,
+): HTMLElement {
+  const item = document.createElement('div');
+  item.className = 'module-item';
 
-  for (const mod of MODULE_CATALOG) {
-    const item = document.createElement('div');
-    item.className = 'module-item';
+  const info = document.createElement('div');
+  info.className = 'module-info';
 
-    const info = document.createElement('div');
-    info.className = 'module-info';
+  const topRow = document.createElement('div');
+  topRow.className = 'module-top-row';
 
-    const nameBox = document.createElement('div');
-    nameBox.className = 'module-name-box';
+  const name = document.createElement('span');
+  name.className = 'module-name';
+  name.textContent = mod.name;
 
-    const name = document.createElement('span');
-    name.className = 'module-name';
-    name.textContent = mod.name;
+  const badge = document.createElement('span');
+  badge.className = `access-badge ${mod.accessLevel}`;
+  badge.textContent = ACCESS_LABELS[mod.accessLevel];
 
-    const infoIcon = document.createElement('span');
-    infoIcon.className = 'info-icon';
-    infoIcon.title = 'More info';
-    infoIcon.textContent = 'i';
-    infoIcon.setAttribute('role', 'button');
-    infoIcon.setAttribute('tabindex', '0');
-    infoIcon.setAttribute('aria-label', `More info about ${mod.name}`);
+  const chevron = document.createElement('span');
+  chevron.className = 'expand-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.innerHTML = `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
-    nameBox.append(name, infoIcon);
+  topRow.append(name, badge, chevron);
 
-    const desc = document.createElement('span');
-    desc.className = 'module-desc';
-    desc.textContent = mod.description;
+  const desc = document.createElement('span');
+  desc.className = 'module-desc';
+  desc.textContent = mod.description;
 
-    const details = document.createElement('div');
-    details.className = 'module-details';
-    details.textContent = mod.info;
+  const details = document.createElement('div');
+  details.className = 'module-details';
+  details.textContent = mod.info;
 
-    const toggleDetails = (e: Event) => {
+  info.setAttribute('role', 'button');
+  info.setAttribute('aria-expanded', 'false');
+  info.setAttribute('tabindex', '0');
+  info.addEventListener('click', () => {
+    const isShown = details.classList.toggle('show');
+    chevron.classList.toggle('is-expanded', isShown);
+    info.setAttribute('aria-expanded', String(isShown));
+  });
+  info.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      details.classList.toggle('show');
-      infoIcon.setAttribute('aria-expanded', details.classList.contains('show') ? 'true' : 'false');
-    };
-    infoIcon.addEventListener('click', toggleDetails);
-    infoIcon.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') toggleDetails(e);
-    });
+      info.click();
+    }
+  });
 
-    info.append(nameBox, desc, details);
+  info.append(topRow, desc, details);
 
-    const label = document.createElement('label');
-    label.className = 'toggle';
+  const label = document.createElement('label');
+  label.className = 'toggle';
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.dataset.module = mod.id;
-    checkbox.checked = enabledIds.includes(mod.id);
-    checkbox.setAttribute('aria-label', `Toggle ${mod.name}`);
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.dataset.module = mod.id;
+  checkbox.checked = isEnabled;
+  checkbox.setAttribute('aria-label', `Toggle ${mod.name}`);
 
-    const slider = document.createElement('span');
-    slider.className = 'toggle-slider';
+  const slider = document.createElement('span');
+  slider.className = 'toggle-slider';
 
-    label.append(checkbox, slider);
-    item.append(info, label);
-    container.appendChild(item);
+  label.append(checkbox, slider);
+  item.append(info, label);
+
+  return item;
+}
+
+function updateCounts(enabledCount: number): void {
+  if (headerCounts) {
+    headerCounts.textContent = `${enabledCount} / ${MODULE_CATALOG.length}`;
   }
 }
 
-async function persistEnabledModules(): Promise<void> {
-  if (!container) return;
+async function render(): Promise<void> {
+  if (!modulesList) return;
 
-  const checkboxes = container.querySelectorAll<HTMLInputElement>('input[type="checkbox"][data-module]');
+  const enabledIds = await getEnabledModules();
+  modulesList.textContent = '';
+
+  for (const mod of MODULE_CATALOG) {
+    const isEnabled = enabledIds.includes(mod.id);
+    const item = createModuleItem(mod, isEnabled);
+    modulesList.appendChild(item);
+  }
+
+  updateCounts(enabledIds.length);
+}
+
+async function persistEnabledModules(): Promise<void> {
+  const allCheckboxes = document.querySelectorAll<HTMLInputElement>(
+    'input[type="checkbox"][data-module]',
+  );
   const updated: string[] = [];
-  checkboxes.forEach((cb) => {
+  allCheckboxes.forEach((cb) => {
     if (cb.checked && cb.dataset.module) {
       updated.push(cb.dataset.module);
     }
@@ -91,40 +123,38 @@ async function persistEnabledModules(): Promise<void> {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
-      await chrome.tabs.sendMessage(tab.id, { type: 'sfboost:update-modules', enabledIds: updated });
+      await chrome.tabs.sendMessage(tab.id, {
+        type: 'sfboost:update-modules',
+        enabledIds: updated,
+      });
     }
   } catch {
     // Active tab may not have the content script injected.
   }
 }
 
-container?.addEventListener('change', async (e) => {
+document.addEventListener('change', async (e) => {
   const target = e.target as HTMLInputElement;
-  const moduleId = target.dataset.module;
-  if (!moduleId) return;
+  if (!target.dataset.module) return;
   await persistEnabledModules();
+  updateCounts(
+    document.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"][data-module]:checked',
+    ).length,
+  );
 });
 
-const shortcutsBtn = document.getElementById('shortcuts-btn');
-if (shortcutsBtn) {
-  shortcutsBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
-  });
-}
+document.getElementById('shortcuts-btn')?.addEventListener('click', () => {
+  chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+});
 
-const privacyBtn = document.getElementById('privacy-btn');
-if (privacyBtn) {
-  privacyBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: PRIVACY_POLICY_URL });
-  });
-}
+document.getElementById('privacy-btn')?.addEventListener('click', () => {
+  chrome.tabs.create({ url: PRIVACY_POLICY_URL });
+});
 
-const supportBtn = document.getElementById('support-btn');
-if (supportBtn) {
-  supportBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: SUPPORT_URL });
-  });
-}
+document.getElementById('support-btn')?.addEventListener('click', () => {
+  chrome.tabs.create({ url: SUPPORT_URL });
+});
 
 // Set version from manifest
 const versionLabel = document.getElementById('version-label');

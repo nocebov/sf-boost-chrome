@@ -9,21 +9,42 @@
 <body>
   <div class="popup">
     <header class="header">
-      <h1>SF Boost</h1>
-      <span class="version" id="version-label"></span>
-    </header>
-    <section class="modules" id="modules">
-      <!-- Filled dynamically -->
-    </section>
-    <section class="data-note">
-      <p>API-assisted modules use your current Salesforce session locally against the active org only. Settings are stored in Chrome storage.</p>
-      <div class="resource-links">
-        <button id="privacy-btn" class="secondary-link">Privacy Policy</button>
-        <button id="support-btn" class="secondary-link">Support</button>
+      <div class="header-left">
+        <div class="logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 128 128">
+            <rect width="128" height="128" rx="24" fill="#0176D3"/>
+            <text x="64" y="82" font-family="Arial, sans-serif" font-size="60" font-weight="bold" fill="white" text-anchor="middle">SF</text>
+            <circle cx="100" cy="28" r="16" fill="#2ECC71"/>
+            <path d="M92 28 L98 34 L108 22" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="header-text">
+          <h1>SF Boost</h1>
+          <span class="version" id="version-label"></span>
+        </div>
       </div>
+      <div class="header-counts" id="header-counts"></div>
+    </header>
+
+    <section class="modules-section">
+      <div class="modules-list" id="modules-list"></div>
     </section>
+
     <footer class="footer">
-      <button id="shortcuts-btn" class="shortcuts-link">⚙️ Keyboard Shortcuts</button>
+      <div class="footer-links">
+        <button id="shortcuts-btn" class="footer-btn" title="Keyboard Shortcuts">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+          <span>Shortcuts</span>
+        </button>
+        <button id="privacy-btn" class="footer-btn" title="Privacy Policy">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>Privacy</span>
+        </button>
+        <button id="support-btn" class="footer-btn" title="Support">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+          <span>Support</span>
+        </button>
+      </div>
     </footer>
   </div>
   <script src="./main.ts" type="module"></script>

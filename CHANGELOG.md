@@ -4,6 +4,13 @@ All notable changes to SF Boost will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-03-19
+
+### Added
+- User Guide (`docs/user-guide.md`) — getting started, module descriptions, keyboard shortcuts, FAQ, troubleshooting
+- Chrome Web Store badge and Install section in README
+- Environment Safeguard: badge adapts position when DevOps Center bar is visible
+
 ## [0.4.0] - 2026-03-15
 
 ### Added
