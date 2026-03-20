@@ -3,185 +3,622 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
 import { showToast } from '../../lib/toast';
 import { tokens } from '../../lib/design-tokens';
+import { createBadge, createButton } from '../../lib/ui-helpers';
+import {
+  buildFieldIndex,
+  buildFieldSetupUrl,
+  buildSelectSnippet,
+  normalizeFieldLabelText,
+  resolveFieldInfo,
+  type FieldIndex,
+  type FieldInfo,
+} from './utils';
 
 const BADGE_CLASS = 'sfboost-field-badge';
-const LABEL_SELECTOR =
+const POPOVER_ID = 'sfboost-field-popover';
+const RECORD_LABEL_SELECTOR =
   'span.test-id__field-label, ' +
   '.slds-form-element__label:not(:has(span.test-id__field-label)), ' +
   'records-record-layout-item span[class*="label"]:not(:has(span.test-id__field-label))';
-
-type FieldInfo = { apiName: string; type: string; required: boolean };
+const LIST_HEADER_SELECTOR = 'table[role="grid"] thead th[role="columnheader"], table[role="grid"] thead th';
+const TEXT_STRIP_SELECTOR = `.${BADGE_CLASS}, lightning-helptext, abbr.slds-required, button, svg, use`;
 
 let currentCtx: ModuleContext | null = null;
 let cachedObjectApiName: string | null = null;
-let cachedFieldMap: Map<string, FieldInfo> | null = null;
+let cachedFieldIndex: FieldIndex | null = null;
 let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let navigationGen = 0;
+let inspectorVisible = true;
+let listenersAttached = false;
+let popoverEl: HTMLDivElement | null = null;
+let popoverAnchor: HTMLElement | null = null;
 
-/* ── Fetch or reuse field map ──────────────────────────────── */
+function isSupportedPageType(pageType: ModuleContext['pageContext']['pageType']): boolean {
+  return pageType === 'record' || pageType === 'list';
+}
 
-async function getFieldMap(
+async function copyText(value: string, successMessage: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(successMessage);
+  } catch {
+    showToast('Failed to copy to clipboard');
+  }
+}
+
+async function getFieldIndexForObject(
   instanceUrl: string,
   objectApiName: string,
-): Promise<Map<string, FieldInfo> | null> {
-  if (objectApiName === cachedObjectApiName && cachedFieldMap) {
-    return cachedFieldMap;
+): Promise<FieldIndex | null> {
+  if (objectApiName === cachedObjectApiName && cachedFieldIndex) {
+    return cachedFieldIndex;
   }
 
-  let describeData: any;
+  let describeData: unknown;
   try {
     describeData = await sendMessage('describeObject', { instanceUrl, objectApiName });
-  } catch (e: any) {
-    showToast(`Error: ${e.message}`, 'right');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Describe request failed';
+    showToast(`Field Inspector: ${message}`, 'right');
     return null;
   }
 
-  if (!describeData?.fields) return null;
+  const fields = (
+    describeData &&
+    typeof describeData === 'object' &&
+    'fields' in describeData
+  ) ? (describeData as { fields?: unknown }).fields : undefined;
 
-  const map = new Map<string, FieldInfo>();
-  for (const field of describeData.fields) {
-    map.set((field.label as string).toLowerCase().trim(), {
-      apiName: field.name as string,
-      type: field.type as string,
-      required: !field.nillable && !field.defaultedOnCreate,
-    });
+  const fieldIndex = buildFieldIndex(fields);
+  if (fieldIndex.byApiName.size === 0) {
+    return null;
   }
 
   cachedObjectApiName = objectApiName;
-  cachedFieldMap = map;
-  return map;
+  cachedFieldIndex = fieldIndex;
+  return fieldIndex;
 }
 
-/* ── Apply badges to label elements that don't have one yet ── */
+function removeNodes(root: ParentNode, selector: string): void {
+  root.querySelectorAll(selector).forEach((node) => node.remove());
+}
 
-function applyBadgesToDOM(fieldMap: Map<string, FieldInfo>) {
-  document.querySelectorAll(LABEL_SELECTOR).forEach((el) => {
-    if (el.querySelector(`.${BADGE_CLASS}`)) return;
+function extractCleanText(element: Element): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  removeNodes(clone, TEXT_STRIP_SELECTOR);
+  return normalizeFieldLabelText(clone.textContent ?? '');
+}
 
-    const labelText = (el.textContent ?? '').replace(/[\s*:]+$/, '').toLowerCase().trim();
-    const fieldInfo = fieldMap.get(labelText);
+function extractListHeaderText(header: HTMLElement): string {
+  const titleCandidates = [
+    header.title,
+    ...Array.from(header.querySelectorAll<HTMLElement>('[title]')).map((element) => element.title),
+  ]
+    .map((value) => normalizeFieldLabelText(value))
+    .filter((value) => value && !/(sort|action|resize|menu|select all)/i.test(value));
+
+  return titleCandidates[0] ?? extractCleanText(header);
+}
+
+function closePopover(): void {
+  if (popoverAnchor) {
+    popoverAnchor.setAttribute('aria-expanded', 'false');
+  }
+
+  popoverEl?.remove();
+  popoverEl = null;
+  popoverAnchor = null;
+
+  document.removeEventListener('mousedown', handleDocumentPointerDown, true);
+  document.removeEventListener('keydown', handleDocumentKeydown, true);
+  window.removeEventListener('resize', handleViewportChange, true);
+  window.removeEventListener('scroll', handleViewportChange, true);
+}
+
+function positionPopover(anchor: HTMLElement, popover: HTMLDivElement): void {
+  const rect = anchor.getBoundingClientRect();
+  const gutter = 12;
+  const maxWidth = Math.min(360, window.innerWidth - gutter * 2);
+
+  popover.style.maxWidth = `${maxWidth}px`;
+
+  const { width, height } = popover.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 8;
+
+  if (left + width > window.innerWidth - gutter) {
+    left = window.innerWidth - width - gutter;
+  }
+  if (left < gutter) {
+    left = gutter;
+  }
+
+  if (top + height > window.innerHeight - gutter) {
+    top = rect.top - height - 8;
+  }
+  if (top < gutter) {
+    top = gutter;
+  }
+
+  popover.style.left = `${Math.round(left)}px`;
+  popover.style.top = `${Math.round(top)}px`;
+}
+
+function handleDocumentPointerDown(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Node)) {
+    closePopover();
+    return;
+  }
+
+  if (popoverEl?.contains(target) || popoverAnchor?.contains(target)) {
+    return;
+  }
+
+  closePopover();
+}
+
+function handleDocumentKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    closePopover();
+  }
+}
+
+function handleViewportChange(): void {
+  closePopover();
+}
+
+function createInfoRow(label: string, value: string): HTMLDivElement {
+  const row = document.createElement('div');
+  row.setAttribute('style', `
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: ${tokens.space.md};
+    align-items: start;
+  `);
+
+  const labelEl = document.createElement('span');
+  labelEl.textContent = label;
+  labelEl.setAttribute('style', `
+    color: ${tokens.color.textSecondary};
+    font-size: ${tokens.font.size.sm};
+    font-weight: ${tokens.font.weight.medium};
+  `);
+
+  const valueEl = document.createElement('span');
+  valueEl.textContent = value;
+  valueEl.setAttribute('style', `
+    color: ${tokens.color.textPrimary};
+    font-size: ${tokens.font.size.base};
+    line-height: 1.4;
+    word-break: break-word;
+  `);
+
+  row.append(labelEl, valueEl);
+  return row;
+}
+
+function createCodeBlock(text: string): HTMLPreElement {
+  const pre = document.createElement('pre');
+  pre.textContent = text;
+  pre.setAttribute('style', `
+    margin: 0;
+    padding: ${tokens.space.md};
+    background: ${tokens.color.surfaceSubtle};
+    border: 1px solid ${tokens.color.borderDefault};
+    border-radius: ${tokens.radius.sm};
+    color: ${tokens.color.textPrimary};
+    font-family: ${tokens.font.family.mono};
+    font-size: ${tokens.font.size.sm};
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+  `);
+  return pre;
+}
+
+function renderPopover(anchor: HTMLElement, fieldInfo: FieldInfo): void {
+  if (!currentCtx?.pageContext.objectApiName) {
+    return;
+  }
+
+  if (popoverAnchor === anchor && popoverEl) {
+    closePopover();
+    return;
+  }
+
+  closePopover();
+
+  const { objectApiName, instanceUrl } = currentCtx.pageContext;
+  const popover = document.createElement('div');
+  popover.id = POPOVER_ID;
+  popover.setAttribute('role', 'dialog');
+  popover.setAttribute('aria-label', `Field details for ${fieldInfo.label}`);
+  popover.setAttribute('style', `
+    position: fixed;
+    z-index: ${tokens.zIndex.overlay};
+    width: min(360px, calc(100vw - 24px));
+    padding: ${tokens.space.xl};
+    background: ${tokens.color.surfaceBase};
+    border: 1px solid ${tokens.color.borderDefault};
+    border-radius: ${tokens.radius.lg};
+    box-shadow: ${tokens.shadow.md};
+    display: flex;
+    flex-direction: column;
+    gap: ${tokens.space.lg};
+    font-family: ${tokens.font.family.sans};
+  `);
+
+  const header = document.createElement('div');
+  header.setAttribute('style', `
+    display: flex;
+    justify-content: space-between;
+    gap: ${tokens.space.md};
+    align-items: start;
+  `);
+
+  const titleWrap = document.createElement('div');
+  titleWrap.setAttribute('style', `
+    display: flex;
+    flex-direction: column;
+    gap: ${tokens.space.xs};
+    min-width: 0;
+  `);
+
+  const title = document.createElement('strong');
+  title.textContent = fieldInfo.label;
+  title.setAttribute('style', `
+    color: ${tokens.color.textPrimary};
+    font-size: ${tokens.font.size.md};
+    line-height: 1.3;
+  `);
+
+  const apiName = document.createElement('code');
+  apiName.textContent = fieldInfo.apiName;
+  apiName.setAttribute('style', `
+    color: ${tokens.color.primary};
+    font-family: ${tokens.font.family.mono};
+    font-size: ${tokens.font.size.base};
+    word-break: break-word;
+  `);
+
+  titleWrap.append(title, apiName);
+
+  const closeBtn = createButton('Close', { primary: false, small: true });
+  closeBtn.addEventListener('click', closePopover);
+
+  header.append(titleWrap, closeBtn);
+
+  const tags = document.createElement('div');
+  tags.setAttribute('style', `
+    display: flex;
+    flex-wrap: wrap;
+    gap: ${tokens.space.sm};
+  `);
+  tags.appendChild(createBadge(fieldInfo.type, 'info'));
+  tags.appendChild(createBadge(fieldInfo.required ? 'Required' : 'Optional', fieldInfo.required ? 'warning' : 'neutral'));
+  if (fieldInfo.custom) tags.appendChild(createBadge('Custom', 'success'));
+  if (fieldInfo.externalId) tags.appendChild(createBadge('External ID', 'info'));
+  if (fieldInfo.unique) tags.appendChild(createBadge('Unique', 'warning'));
+  if (fieldInfo.encrypted) tags.appendChild(createBadge('Encrypted', 'error'));
+  if (fieldInfo.calculated) tags.appendChild(createBadge('Formula', 'neutral'));
+
+  const facts = document.createElement('div');
+  facts.setAttribute('style', `
+    display: flex;
+    flex-direction: column;
+    gap: ${tokens.space.sm};
+  `);
+  facts.appendChild(createInfoRow('Object', objectApiName));
+  facts.appendChild(createInfoRow('Access', [
+    fieldInfo.createable ? 'Create' : null,
+    fieldInfo.updateable ? 'Edit' : null,
+    fieldInfo.filterable ? 'Filter' : null,
+    fieldInfo.sortable ? 'Sort' : null,
+  ].filter((value): value is string => value !== null).join(' • ') || 'Read only'));
+
+  if (fieldInfo.length !== undefined) {
+    facts.appendChild(createInfoRow('Length', String(fieldInfo.length)));
+  }
+  if (fieldInfo.precision !== undefined) {
+    const scaleSuffix = fieldInfo.scale !== undefined ? ` / scale ${fieldInfo.scale}` : '';
+    facts.appendChild(createInfoRow('Precision', `${fieldInfo.precision}${scaleSuffix}`));
+  }
+  if (fieldInfo.relationshipName) {
+    facts.appendChild(createInfoRow('Relationship', fieldInfo.relationshipName));
+  }
+  if (fieldInfo.referenceTo.length > 0) {
+    facts.appendChild(createInfoRow('References', fieldInfo.referenceTo.join(', ')));
+  }
+  if (fieldInfo.inlineHelpText) {
+    facts.appendChild(createInfoRow('Help Text', fieldInfo.inlineHelpText));
+  }
+
+  if (fieldInfo.formula) {
+    const formulaWrap = document.createElement('div');
+    formulaWrap.setAttribute('style', `
+      display: flex;
+      flex-direction: column;
+      gap: ${tokens.space.sm};
+    `);
+
+    const formulaLabel = document.createElement('span');
+    formulaLabel.textContent = 'Formula';
+    formulaLabel.setAttribute('style', `
+      color: ${tokens.color.textSecondary};
+      font-size: ${tokens.font.size.sm};
+      font-weight: ${tokens.font.weight.medium};
+    `);
+
+    formulaWrap.append(formulaLabel, createCodeBlock(fieldInfo.formula));
+    facts.appendChild(formulaWrap);
+  }
+
+  const actions = document.createElement('div');
+  actions.setAttribute('style', `
+    display: flex;
+    flex-wrap: wrap;
+    gap: ${tokens.space.sm};
+  `);
+
+  const copyApiBtn = createButton('Copy API', { primary: false, small: true });
+  copyApiBtn.addEventListener('click', () => {
+    void copyText(fieldInfo.apiName, `Copied API name: ${fieldInfo.apiName}`);
+  });
+
+  const copySelectBtn = createButton('Copy SOQL', { primary: false, small: true });
+  copySelectBtn.addEventListener('click', () => {
+    void copyText(
+      buildSelectSnippet(objectApiName, fieldInfo.apiName),
+      `Copied SOQL for ${fieldInfo.apiName}`,
+    );
+  });
+
+  const openSetupBtn = createButton('Open Setup', { primary: false, small: true });
+  openSetupBtn.addEventListener('click', () => {
+    window.open(buildFieldSetupUrl(instanceUrl, objectApiName, fieldInfo.apiName), '_blank', 'noopener,noreferrer');
+  });
+
+  actions.append(copyApiBtn, copySelectBtn, openSetupBtn);
+
+  if (fieldInfo.relationshipName) {
+    const copyRelationshipBtn = createButton('Copy Relationship', { primary: false, small: true });
+    copyRelationshipBtn.addEventListener('click', () => {
+      void copyText(fieldInfo.relationshipName!, `Copied relationship name: ${fieldInfo.relationshipName}`);
+    });
+    actions.appendChild(copyRelationshipBtn);
+  }
+
+  popover.append(header, tags, facts, actions);
+  document.body.appendChild(popover);
+
+  popoverEl = popover;
+  popoverAnchor = anchor;
+  popoverAnchor.setAttribute('aria-expanded', 'true');
+
+  positionPopover(anchor, popover);
+  document.addEventListener('mousedown', handleDocumentPointerDown, true);
+  document.addEventListener('keydown', handleDocumentKeydown, true);
+  window.addEventListener('resize', handleViewportChange, true);
+  window.addEventListener('scroll', handleViewportChange, true);
+}
+
+function createFieldBadge(fieldInfo: FieldInfo, kind: 'record' | 'list'): HTMLButtonElement {
+  const badge = document.createElement('button');
+  badge.type = 'button';
+  badge.className = BADGE_CLASS;
+  badge.textContent = fieldInfo.apiName;
+  badge.title = `Type: ${fieldInfo.type}${fieldInfo.required ? ' • Required' : ''}${fieldInfo.relationshipName ? ` • ${fieldInfo.relationshipName}` : ''}\nClick for details • Ctrl/Cmd+Click to copy`;
+  badge.setAttribute('aria-haspopup', 'dialog');
+  badge.setAttribute('aria-expanded', 'false');
+  badge.setAttribute('style', `
+    display: inline-flex;
+    align-items: center;
+    gap: ${tokens.space.xs};
+    margin-left: ${tokens.space.sm};
+    padding: 1px ${tokens.space.sm};
+    background: ${tokens.color.primaryLight};
+    color: ${tokens.color.primary};
+    font-size: ${tokens.font.size.xs};
+    font-weight: ${tokens.font.weight.semibold};
+    border-radius: ${tokens.radius.sm};
+    font-family: ${tokens.font.family.mono};
+    cursor: pointer;
+    vertical-align: middle;
+    border: 1px solid ${tokens.color.primaryBorder};
+    line-height: 1.4;
+  `);
+
+  badge.addEventListener('mouseenter', () => {
+    badge.style.background = tokens.color.infoLight;
+    badge.style.borderColor = tokens.color.infoBorder;
+  });
+  badge.addEventListener('mouseleave', () => {
+    badge.style.background = tokens.color.primaryLight;
+    badge.style.borderColor = tokens.color.primaryBorder;
+  });
+
+  badge.addEventListener('click', (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (event.ctrlKey || event.metaKey) {
+      void copyText(fieldInfo.apiName, `Copied API name: ${fieldInfo.apiName}`);
+      return;
+    }
+
+    renderPopover(badge, fieldInfo);
+  });
+
+  badge.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      renderPopover(badge, fieldInfo);
+    }
+  });
+
+  return badge;
+}
+
+function findListBadgeMount(header: HTMLElement): HTMLElement {
+  const contentTarget = header.querySelector<HTMLElement>('a, .slds-truncate, span[title], div[title]');
+  if (contentTarget) {
+    return contentTarget.matches('a') ? (contentTarget.parentElement ?? header) : contentTarget;
+  }
+
+  const button = header.querySelector<HTMLElement>('button');
+  if (button?.parentElement) {
+    return button.parentElement;
+  }
+
+  return header;
+}
+
+function applyRecordBadges(fieldIndex: FieldIndex): void {
+  document.querySelectorAll<HTMLElement>(RECORD_LABEL_SELECTOR).forEach((labelEl) => {
+    if (labelEl.querySelector(`.${BADGE_CLASS}`)) return;
+
+    const fieldInfo = resolveFieldInfo(fieldIndex, extractCleanText(labelEl));
     if (!fieldInfo) return;
 
-    const badge = document.createElement('span');
-    badge.className = BADGE_CLASS;
-    badge.setAttribute('style', `
-      display: inline-block;
-      margin-left: ${tokens.space.sm};
-      padding: 1px ${tokens.space.sm};
-      background: ${tokens.color.primaryLight};
-      color: ${tokens.color.primary};
-      font-size: ${tokens.font.size.xs};
-      font-weight: ${tokens.font.weight.semibold};
-      border-radius: ${tokens.radius.sm};
-      font-family: ${tokens.font.family.mono};
-      cursor: pointer;
-      vertical-align: middle;
-      border: 1px solid ${tokens.color.primaryBorder};
-    `);
-    badge.textContent = fieldInfo.apiName;
-    badge.title = `Type: ${fieldInfo.type}${fieldInfo.required ? ' | Required' : ''}\nClick to copy`;
-
-    badge.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      try {
-        await navigator.clipboard.writeText(fieldInfo.apiName);
-        badge.textContent = 'Copied!';
-        badge.style.background = tokens.color.success;
-        badge.style.color = tokens.color.textOnPrimary;
-      } catch {
-        badge.textContent = 'Failed';
-        badge.style.background = tokens.color.error;
-        badge.style.color = tokens.color.textOnPrimary;
-      }
-      setTimeout(() => {
-        badge.textContent = fieldInfo.apiName;
-        badge.style.background = tokens.color.primaryLight;
-        badge.style.color = tokens.color.primary;
-      }, 1000);
-    });
-
-    el.appendChild(badge);
+    labelEl.appendChild(createFieldBadge(fieldInfo, 'record'));
   });
 }
 
-/* ── Main auto-apply flow ──────────────────────────────────── */
+function applyListBadges(fieldIndex: FieldIndex): void {
+  document.querySelectorAll<HTMLElement>(LIST_HEADER_SELECTOR).forEach((headerEl) => {
+    if (headerEl.querySelector(`.${BADGE_CLASS}`)) return;
 
-async function applyBadges() {
-  if (!currentCtx) return;
-  const { objectApiName, instanceUrl } = currentCtx.pageContext;
-  if (!objectApiName) return;
+    const fieldInfo = resolveFieldInfo(fieldIndex, extractListHeaderText(headerEl));
+    if (!fieldInfo) return;
 
-  const gen = navigationGen;
-  const fieldMap = await getFieldMap(instanceUrl, objectApiName);
-  if (!fieldMap || gen !== navigationGen) return;
-
-  applyBadgesToDOM(fieldMap);
-  startObserver(fieldMap);
+    findListBadgeMount(headerEl).appendChild(createFieldBadge(fieldInfo, 'list'));
+  });
 }
 
-/* ── MutationObserver for lazily-loaded sections ───────────── */
+function applyBadgesToDOM(fieldIndex: FieldIndex): void {
+  if (!currentCtx) return;
 
-function startObserver(fieldMap: Map<string, FieldInfo>) {
+  if (currentCtx.pageContext.pageType === 'record') {
+    applyRecordBadges(fieldIndex);
+    return;
+  }
+
+  if (currentCtx.pageContext.pageType === 'list') {
+    applyListBadges(fieldIndex);
+  }
+}
+
+function startObserver(fieldIndex: FieldIndex): void {
   stopObserver();
+
   observer = new MutationObserver(() => {
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => applyBadgesToDOM(fieldMap), 300);
+    debounceTimer = setTimeout(() => applyBadgesToDOM(fieldIndex), 250);
   });
+
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-function stopObserver() {
+function stopObserver(): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+
   if (observer) {
     observer.disconnect();
     observer = null;
   }
 }
 
-/* ── Cleanup ───────────────────────────────────────────────── */
-
-function removeFieldBadges() {
-  document.querySelectorAll(`.${BADGE_CLASS}`).forEach((el) => el.remove());
+function removeFieldBadges(): void {
+  closePopover();
+  document.querySelectorAll(`.${BADGE_CLASS}`).forEach((element) => element.remove());
 }
 
-/* ── Module definition ─────────────────────────────────────── */
+async function applyBadges(): Promise<void> {
+  if (!currentCtx || !inspectorVisible) return;
+
+  const { objectApiName, instanceUrl, pageType } = currentCtx.pageContext;
+  if (!objectApiName || !isSupportedPageType(pageType)) return;
+
+  const gen = navigationGen;
+  const fieldIndex = await getFieldIndexForObject(instanceUrl, objectApiName);
+  if (!fieldIndex || gen !== navigationGen) return;
+
+  applyBadgesToDOM(fieldIndex);
+  startObserver(fieldIndex);
+}
+
+function handleInspectorToggle(): void {
+  inspectorVisible = !inspectorVisible;
+
+  stopObserver();
+  removeFieldBadges();
+
+  if (!inspectorVisible) {
+    showToast('Field Inspector hidden');
+    return;
+  }
+
+  showToast('Field Inspector shown');
+  void applyBadges();
+}
+
+function attachListeners(): void {
+  if (listenersAttached) return;
+  document.addEventListener('sfboost:toggle-inspector', handleInspectorToggle as EventListener);
+  listenersAttached = true;
+}
+
+function detachListeners(): void {
+  if (!listenersAttached) return;
+  document.removeEventListener('sfboost:toggle-inspector', handleInspectorToggle as EventListener);
+  listenersAttached = false;
+}
 
 const fieldInspector: SFBoostModule = {
   id: 'field-inspector',
   name: 'Field Inspector',
-  description: 'Automatically shows API names next to field labels on record pages',
+  description: 'Shows API names on record fields and list columns, with click-through metadata',
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
+
     currentCtx = ctx;
-    if (ctx.pageContext.pageType === 'record') {
-      applyBadges();
+    attachListeners();
+
+    if (isSupportedPageType(ctx.pageContext.pageType)) {
+      await applyBadges();
     }
   },
 
   async onNavigate(ctx: ModuleContext) {
     if (window.top !== window.self) return;
+
     navigationGen++;
     stopObserver();
     removeFieldBadges();
     currentCtx = ctx;
-    if (ctx.pageContext.pageType === 'record') {
-      applyBadges();
+
+    if (isSupportedPageType(ctx.pageContext.pageType) && inspectorVisible) {
+      await applyBadges();
     }
   },
 
   destroy() {
     if (window.top !== window.self) return;
+
     navigationGen++;
     stopObserver();
     removeFieldBadges();
-    cachedFieldMap = null;
+    detachListeners();
+    cachedFieldIndex = null;
     cachedObjectApiName = null;
     currentCtx = null;
+    inspectorVisible = true;
   },
 };
 

@@ -79,15 +79,17 @@ Jump anywhere in Setup — or search Salesforce metadata — without clicking th
 
 > Enabled by default · Read-only · `Alt+Shift+F` to toggle
 
-See field API names directly on any Lightning record page.
+See field API names directly on Lightning record pages and list views.
 
-**How it works:** When you view a record, blue badges appear next to field labels showing the API name. Hover a badge to see the field type and whether it's required. Click a badge to copy the API name to your clipboard.
+**How it works:** Blue badges appear next to supported field labels on record pages and next to supported column headers in Lightning list views. Click a badge to open a metadata panel for that field.
 
 **Tips:**
-- Works on all standard and custom object record pages in Lightning
+- Works on standard and custom object record pages, plus Lightning list views for the active object
 - Uses Salesforce's describe API (cached for 1 hour per object, max 25 objects)
 - Toggle visibility with `Alt+Shift+F` without disabling the module
-- Badges update automatically when new sections load (e.g., expanding related lists)
+- `Ctrl`/`Cmd` + click copies the API name immediately
+- The metadata panel includes quick actions for Copy API, Copy SOQL, Open Setup, and Copy Relationship (when available)
+- Badges update automatically when new sections or table headers are rendered
 
 ---
 

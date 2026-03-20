@@ -38,9 +38,9 @@ Default quick actions (when not customized): `1` Profiles · `2` Permission Sets
 
 ### Field Inspector
 
-See field API names directly on any **Lightning record page** — no more digging through Object Manager.
+See field API names directly on **Lightning record pages and list views** — no more digging through Object Manager.
 
-When enabled (on by default), SF Boost automatically adds blue API-name badges next to supported field labels on **Lightning record pages**. **Hover** the badge to see field type + required. **Click** the badge to copy the API name instantly.
+When enabled (on by default), SF Boost automatically adds blue API-name badges next to supported field labels on record pages and next to list-view column headers. **Click** a badge to open a compact metadata panel with field type, required/optional state, access hints, relationship info, formula/help text, copy helpers, and a direct shortcut to the field in Object Manager. Use `Ctrl`/`Cmd` + click on a badge for a quick API-name copy, or `Alt+Shift+F` to hide/show badges without disabling the module.
 
 ---
 

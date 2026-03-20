@@ -21,8 +21,8 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   {
     id: 'field-inspector',
     name: 'Field Inspector',
-    description: 'Show API names on fields',
-    info: 'Reveals API names next to fields on record pages. Uses Salesforce describe metadata from the active org only when you toggle it on.',
+    description: 'Show API names and metadata on fields',
+    info: 'Reveals API names next to record fields and list-view columns. Click a badge for field metadata, copy helpers, and a shortcut to the field in Object Manager. Uses Salesforce describe metadata from the active org only when the module is enabled.',
     defaultEnabled: true,
     accessLevel: 'read-only',
   },

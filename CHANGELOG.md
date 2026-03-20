@@ -4,6 +4,12 @@ All notable changes to SF Boost will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Field Inspector now supports Lightning list views, keyboard toggling, metadata popovers, copy helpers, and direct Object Manager shortcuts
+- Added a project roadmap document to track near-term UX follow-ups such as a dedicated per-module settings page
+
 ## [0.5.0] - 2026-03-19
 
 ### Added
