@@ -102,6 +102,28 @@ describe('fuzzySearch', () => {
       const results = fuzzySearch('dblg', testCommands);
       expect(results.map(r => r.label)).toContain('Debug Logs');
     });
+
+    it('tolerates small typos in words', () => {
+      const results = fuzzySearch('permision set', testCommands);
+      expect(results[0]?.label).toBe('Permission Sets');
+    });
+
+    it('tolerates multiple typos across words', () => {
+      const results = fuzzySearch('manag usres', testCommands);
+      expect(results[0]?.label).toBe('Users');
+    });
+  });
+
+  describe('extra words tolerance', () => {
+    it('still finds the target when the query contains helper words', () => {
+      const results = fuzzySearch('open permission set page', testCommands);
+      expect(results[0]?.label).toBe('Permission Sets');
+    });
+
+    it('matches the main intent when descriptive words are appended', () => {
+      const results = fuzzySearch('object manager fields', testCommands);
+      expect(results[0]?.label).toBe('Object Manager');
+    });
   });
 
   describe('no match', () => {
@@ -154,12 +176,9 @@ describe('fuzzySearch', () => {
   });
 
   describe('empty query', () => {
-    it('returns nothing for empty string', () => {
+    it('returns an empty array for empty string', () => {
       const results = fuzzySearch('', testCommands);
-      // An empty query has 0-length, so fuzzy match loop completes immediately
-      // This depends on implementation - all chars "match" trivially
-      // Let's just verify it doesn't crash
-      expect(Array.isArray(results)).toBe(true);
+      expect(results).toHaveLength(0);
     });
   });
 });

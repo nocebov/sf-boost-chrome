@@ -736,17 +736,7 @@ function removeModal(): void {
 // --- Module ---
 
 function isRelevantPage(): boolean {
-  const pathname = window.location.pathname;
-  return (
-    (pathname.includes('/ObjectManager/') && pathname.includes('/FieldsAndRelationships/')) ||
-    (pathname.includes('/ObjectManager/') && pathname.includes('/ValidationRules/')) ||
-    pathname.includes('/lightning/setup/ApexClasses/') ||
-    pathname.includes('/lightning/setup/ApexTriggers/') ||
-    pathname.includes('/lightning/setup/Flows/') ||
-    pathname.includes('/builder_platform_interaction/') ||
-    pathname.includes('/lightning/setup/LightningComponentBundles/') ||
-    pathname.includes('/lightning/setup/AuraBundleDefinitions/')
-  );
+  return getComponentFromUrl() !== null;
 }
 
 const deepDependencyInspector: SFBoostModule = {
