@@ -60,6 +60,7 @@ const ENV_COLORS: Record<OrgType, { bg: string; text: string; label: string }> =
   developer: { bg: tokens.color.envDeveloper, text: tokens.color.textOnPrimary, label: 'DEV' },
   scratch: { bg: tokens.color.envScratch, text: tokens.color.textOnPrimary, label: 'SCRATCH' },
   trailhead: { bg: tokens.color.envTrailhead, text: tokens.color.textOnPrimary, label: 'TRAILHEAD' },
+  'code-builder': { bg: tokens.color.envCodeBuilder, text: tokens.color.textOnPrimary, label: 'CODE BUILDER' },
   unknown: { bg: tokens.color.envUnknown, text: tokens.color.textOnPrimary, label: 'UNKNOWN' },
 };
 
@@ -69,6 +70,7 @@ function getTitlePrefix(orgType: OrgType, sandboxName?: string): string {
   if (orgType === 'developer') return '[DEV]';
   if (orgType === 'scratch') return '[SCRATCH]';
   if (orgType === 'trailhead') return '[TRAIL]';
+  if (orgType === 'code-builder') return '[CB]';
   return '';
 }
 

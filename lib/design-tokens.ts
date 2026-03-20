@@ -56,6 +56,7 @@ export const tokens = {
     envDeveloper: '#2563eb',
     envScratch: '#7c3aed',
     envTrailhead: '#0d9488',
+    envCodeBuilder: '#c2410c',
     envUnknown: '#6b7280',
   },
 

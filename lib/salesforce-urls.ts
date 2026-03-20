@@ -4,6 +4,7 @@ export type OrgType =
   | 'developer'
   | 'scratch'
   | 'trailhead'
+  | 'code-builder'
   | 'unknown';
 
 export interface OrgInfo {
@@ -21,6 +22,11 @@ export function detectOrgType(hostname: string): OrgInfo {
       myDomain: match?.[1] ?? hostname,
       sandboxName: match?.[2],
     };
+  }
+  // Salesforce Code Builder (VSCode in browser)
+  // e.g. catshark-u0dqr0.iad.002.sf.code-builder.platform.salesforce.com
+  if (hostname.includes('.code-builder.platform.salesforce.com')) {
+    return { orgType: 'code-builder', myDomain: hostname.split('.')[0] ?? hostname };
   }
   // Trailhead / Trailblaze
   if (hostname.includes('.trailblaze.') || hostname.includes('trailblaze')) {
