@@ -53,8 +53,8 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   {
     id: 'deep-dependency-inspector',
     name: 'Dependency Inspector',
-    description: 'Tooling API scan for fields and Apex classes',
-    info: 'Appears on Object Manager field pages and Apex Class pages. Uses Salesforce Tooling API against the active org only after you click Deep Scan.',
+    description: 'Tooling API dependency scan for Salesforce components',
+    info: 'Appears on Object Manager fields, Validation Rules, Apex Classes, Apex Triggers, Flows, LWC, and Aura pages. Shows what uses this component and what it depends on. Uses Salesforce Tooling API against the active org only after you click Deep Scan.',
     defaultEnabled: false,
     accessLevel: 'read-only',
   },
