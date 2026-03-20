@@ -30,27 +30,35 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
 ];
 
 export async function loadQuickActions(): Promise<QuickAction[]> {
-  const config = await getQuickActionConfig();
+  try {
+    const config = await getQuickActionConfig();
 
-  const builtIn = DEFAULT_QUICK_ACTIONS.filter(
-    (qa) => !config.hiddenBuiltInIds.includes(qa.builtInId!),
-  );
+    const builtIn = DEFAULT_QUICK_ACTIONS.filter(
+      (qa) => !config.hiddenBuiltInIds.includes(qa.builtInId!),
+    );
 
-  const custom: QuickAction[] = config.customActions.map((ca) => ({
-    key: '',
-    label: ca.label,
-    icon: ca.icon || '\u{1F517}',
-    customUrl: ca.url,
-    customId: ca.id,
-  }));
+    const custom: QuickAction[] = config.customActions.map((ca) => ({
+      key: '',
+      label: ca.label,
+      icon: ca.icon || '\u{1F517}',
+      customUrl: ca.url,
+      customId: ca.id,
+    }));
 
-  const merged = [...builtIn, ...custom];
+    const merged = [...builtIn, ...custom];
 
-  merged.forEach((qa, i) => {
-    qa.key = i < 9 ? String(i + 1) : '';
-  });
+    merged.forEach((qa, i) => {
+      qa.key = i < 9 ? String(i + 1) : '';
+    });
 
-  return merged;
+    return merged;
+  } catch (error) {
+    console.error('SF Boost: failed to load quick actions, using defaults', error);
+    return DEFAULT_QUICK_ACTIONS.map((qa, index) => ({
+      ...qa,
+      key: index < 9 ? String(index + 1) : '',
+    }));
+  }
 }
 
 export function renderQuickActionBar(

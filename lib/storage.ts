@@ -87,14 +87,51 @@ export interface QuickActionConfig {
   customActions: CustomQuickAction[];
 }
 
+function normalizeCustomQuickAction(value: unknown): CustomQuickAction | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const candidate = value as Partial<CustomQuickAction>;
+  if (typeof candidate.id !== 'string' || typeof candidate.label !== 'string' || typeof candidate.url !== 'string') {
+    return null;
+  }
+
+  return {
+    id: candidate.id,
+    label: candidate.label,
+    url: candidate.url,
+    icon: typeof candidate.icon === 'string' && candidate.icon.trim() ? candidate.icon : undefined,
+  };
+}
+
+function normalizeQuickActionConfig(value: unknown): QuickActionConfig {
+  if (!value || typeof value !== 'object') {
+    return { hiddenBuiltInIds: [], customActions: [] };
+  }
+
+  const candidate = value as Partial<QuickActionConfig>;
+  const hiddenBuiltInIds = Array.isArray(candidate.hiddenBuiltInIds)
+    ? candidate.hiddenBuiltInIds.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+
+  const customActions = Array.isArray(candidate.customActions)
+    ? candidate.customActions
+        .map((entry) => normalizeCustomQuickAction(entry))
+        .filter((entry): entry is CustomQuickAction => entry !== null)
+    : [];
+
+  return {
+    hiddenBuiltInIds: [...new Set(hiddenBuiltInIds)],
+    customActions,
+  };
+}
+
 export async function getQuickActionConfig(): Promise<QuickActionConfig> {
   const result = await chrome.storage.sync.get('commandPaletteQuickActions');
-  const config = result.commandPaletteQuickActions as QuickActionConfig | undefined;
-  return config ?? { hiddenBuiltInIds: [], customActions: [] };
+  return normalizeQuickActionConfig(result.commandPaletteQuickActions);
 }
 
 export async function setQuickActionConfig(config: QuickActionConfig): Promise<void> {
-  await chrome.storage.sync.set({ commandPaletteQuickActions: config });
+  await chrome.storage.sync.set({ commandPaletteQuickActions: normalizeQuickActionConfig(config) });
 }
 
 export async function resetQuickActionConfig(): Promise<void> {

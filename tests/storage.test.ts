@@ -188,6 +188,23 @@ describe('storage', () => {
       expect(config).toEqual({ hiddenBuiltInIds: [], customActions: [] });
     });
 
+    it('normalizes malformed stored config instead of throwing', async () => {
+      syncStore.commandPaletteQuickActions = {
+        hiddenBuiltInIds: ['profile', 123, 'profile', null],
+        customActions: [
+          { id: 'custom1', label: 'My Link', url: '/test' },
+          { id: 'broken-no-url', label: 'Broken' },
+          'invalid-entry',
+        ],
+      };
+
+      const config = await getQuickActionConfig();
+      expect(config).toEqual({
+        hiddenBuiltInIds: ['profile'],
+        customActions: [{ id: 'custom1', label: 'My Link', url: '/test', icon: undefined }],
+      });
+    });
+
     it('saves and retrieves config', async () => {
       const config = {
         hiddenBuiltInIds: ['debug-log'],
@@ -198,6 +215,21 @@ describe('storage', () => {
       const result = await getQuickActionConfig();
       expect(result.hiddenBuiltInIds).toEqual(['debug-log']);
       expect(result.customActions).toHaveLength(1);
+    });
+
+    it('sanitizes config on save', async () => {
+      await setQuickActionConfig({
+        hiddenBuiltInIds: ['flow', 'flow', 123 as unknown as string],
+        customActions: [
+          { id: 'custom1', label: 'My Link', url: '/test', icon: '' },
+          { id: 'bad', label: 'Missing URL' } as unknown as { id: string; label: string; url: string },
+        ],
+      });
+
+      expect(syncStore.commandPaletteQuickActions).toEqual({
+        hiddenBuiltInIds: ['flow'],
+        customActions: [{ id: 'custom1', label: 'My Link', url: '/test', icon: undefined }],
+      });
     });
 
     it('resets config', async () => {
