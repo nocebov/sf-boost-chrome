@@ -26,6 +26,10 @@ export interface MessageMap {
     data: { instanceUrl: string };
     response: { active: boolean; expirationDate?: string };
   };
+  getOrgLimits: {
+    data: { instanceUrl: string };
+    response: Record<string, { Max: number; Remaining: number }>;
+  };
   createPermissionSet: {
     data: {
       instanceUrl: string;

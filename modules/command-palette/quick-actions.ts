@@ -27,6 +27,7 @@ export const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { key: '4', label: 'Classes', icon: '\u{1F4BB}', subMode: 'apex-class-search', builtInId: 'class' },
   { key: '5', label: 'Triggers', icon: '\u{2699}\u{FE0F}', subMode: 'apex-trigger-search', builtInId: 'trigger' },
   { key: '6', label: 'Debug Log', icon: '\u{1F41E}', actionId: 'toggle-debug-log', builtInId: 'debug' },
+  { key: '7', label: 'Org Limits', icon: '\u{1F4CA}', actionId: 'show-org-limits', builtInId: 'org-limits' },
 ];
 
 export async function loadQuickActions(): Promise<QuickAction[]> {

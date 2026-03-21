@@ -253,6 +253,18 @@ export async function toolingDelete(
   }
 }
 
+export async function getOrgLimits(
+  instanceUrl: string,
+  sessionId: string,
+): Promise<Record<string, { Max: number; Remaining: number }>> {
+  const url = `${instanceUrl}/services/data/${API_VERSION}/limits/`;
+  const response = await fetchWithRetry(url, { headers: authHeaders(sessionId) });
+  if (!response.ok) {
+    throw new Error(`Limits request failed (${response.status})`);
+  }
+  return response.json();
+}
+
 export async function toggleDebugLog(
   instanceUrl: string,
   sessionId: string,

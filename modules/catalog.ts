@@ -36,6 +36,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     settings: [
       { key: 'showOnRecords', label: 'Show on record pages', type: 'boolean', default: true },
       { key: 'showOnListViews', label: 'Show on list views', type: 'boolean', default: true },
+      { key: 'showFieldUsage', label: 'Show field usage % in popover', type: 'boolean', default: true },
     ],
   },
   {
@@ -54,7 +55,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     id: 'table-filter',
     name: 'Table Filter',
     description: 'Quick search for Salesforce tables',
-    info: 'Works on Setup list views. Adds a search box above the table to instantly filter rows on the client side.',
+    info: 'Works on Setup list views. Adds a search box above the table to instantly filter rows on the client side. Includes a "Load All" button for lazy-loaded tables like Object Manager fields.',
     defaultEnabled: true,
     accessLevel: 'ui-only',
   },
@@ -94,6 +95,22 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     info: 'Works on Profile pages in Setup. Reads permissions and creates the new Permission Set in the same Salesforce org using your current session only after you start the wizard.',
     defaultEnabled: false,
     accessLevel: 'write-capable',
+  },
+  {
+    id: 'bulk-check',
+    name: 'Bulk Check',
+    description: 'Check All / Uncheck All for Setup tables',
+    info: 'Adds "Check All" and "Uncheck All" buttons above checkbox columns on Profile, Permission Set, and other Setup edit pages. Pure client-side DOM manipulation — no API calls.',
+    defaultEnabled: false,
+    accessLevel: 'ui-only',
+  },
+  {
+    id: 'org-limits',
+    name: 'Org Limits',
+    description: 'View API limits, storage, and usage for the current org',
+    info: 'Opens a dashboard showing your Salesforce org limits including API call usage, data storage, and other quotas. Accessible via Command Palette quick action.',
+    defaultEnabled: false,
+    accessLevel: 'read-only',
   },
   {
     id: 'hide-devops-bar',

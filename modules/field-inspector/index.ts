@@ -58,6 +58,73 @@ let popoverAnchor: HTMLElement | null = null;
 
 let moduleSettingsCache: Record<string, boolean> = {};
 
+// Fill rate cache: objectApiName → { rates per field, timestamp }
+interface FillRateEntry {
+  rates: Map<string, { filled: number; sampled: number; rate: number }>;
+  fetchedAt: number;
+}
+const fillRateCache = new Map<string, FillRateEntry>();
+const FILL_RATE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const FILL_RATE_SAMPLE_SIZE = 1000;
+const NON_QUERYABLE_TYPES = new Set([
+  'address', 'location', 'base64', 'encryptedstring',
+]);
+
+async function fetchFillRates(
+  instanceUrl: string,
+  objectApiName: string,
+  fieldIndex: FieldIndex,
+): Promise<Map<string, { filled: number; sampled: number; rate: number }>> {
+  const cached = fillRateCache.get(objectApiName);
+  if (cached && Date.now() - cached.fetchedAt < FILL_RATE_TTL_MS) {
+    return cached.rates;
+  }
+
+  // Collect queryable fields
+  const queryableFields: string[] = [];
+  for (const [, fieldInfo] of fieldIndex.byApiName) {
+    if (
+      fieldInfo.filterable &&
+      !fieldInfo.calculated &&
+      !NON_QUERYABLE_TYPES.has(fieldInfo.type.toLowerCase())
+    ) {
+      queryableFields.push(fieldInfo.apiName);
+    }
+  }
+
+  if (queryableFields.length === 0) {
+    return new Map();
+  }
+
+  // Limit fields to avoid SOQL char limit (~20K) — Id + 100 fields is safe
+  const fieldsToQuery = queryableFields.slice(0, 100);
+  const query = `SELECT ${fieldsToQuery.join(', ')} FROM ${objectApiName} LIMIT ${FILL_RATE_SAMPLE_SIZE}`;
+
+  const result = await sendMessage('executeSOQL', { instanceUrl, query });
+  const records = Array.isArray(result?.records) ? result.records : [];
+  const totalRecords = records.length;
+
+  const rates = new Map<string, { filled: number; sampled: number; rate: number }>();
+
+  for (const fieldName of fieldsToQuery) {
+    let filledCount = 0;
+    for (const record of records) {
+      const value = record?.[fieldName];
+      if (value !== null && value !== undefined && value !== '') {
+        filledCount++;
+      }
+    }
+    rates.set(fieldName.toLowerCase(), {
+      filled: filledCount,
+      sampled: totalRecords,
+      rate: totalRecords > 0 ? Math.round((filledCount / totalRecords) * 100) : 0,
+    });
+  }
+
+  fillRateCache.set(objectApiName, { rates, fetchedAt: Date.now() });
+  return rates;
+}
+
 function isSupportedPageType(pageType: ModuleContext['pageContext']['pageType']): boolean {
   if (pageType === 'record') return moduleSettingsCache.showOnRecords !== false;
   if (pageType === 'list') return moduleSettingsCache.showOnListViews !== false;
@@ -498,6 +565,92 @@ function renderPopover(anchor: HTMLElement, fieldInfo: FieldInfo): void {
     facts.appendChild(formulaWrap);
   }
 
+  // Fill rate section — loads async
+  const fillRateSection = document.createElement('div');
+  fillRateSection.setAttribute('style', `
+    display: flex;
+    flex-direction: column;
+    gap: ${tokens.space.xs};
+  `);
+
+  if (moduleSettingsCache.showFieldUsage !== false) {
+    const fillRateLabel = document.createElement('span');
+    fillRateLabel.textContent = 'Usage';
+    fillRateLabel.setAttribute('style', `
+      color: ${tokens.color.textSecondary};
+      font-size: ${tokens.font.size.sm};
+      font-weight: ${tokens.font.weight.medium};
+    `);
+
+    const fillRateValue = document.createElement('div');
+    fillRateValue.textContent = 'Loading...';
+    fillRateValue.setAttribute('style', `
+      color: ${tokens.color.textMuted};
+      font-size: ${tokens.font.size.sm};
+    `);
+
+    fillRateSection.append(fillRateLabel, fillRateValue);
+
+    // Async load fill rate
+    fetchFillRates(instanceUrl, objectApiName, cachedFieldIndex!)
+      .then((rates) => {
+        if (!popoverEl) return; // popover was closed
+        const entry = rates.get(fieldInfo.apiName.toLowerCase());
+        fillRateValue.textContent = '';
+
+        if (!entry) {
+          fillRateValue.textContent = 'N/A';
+          fillRateValue.style.color = tokens.color.textMuted;
+          return;
+        }
+
+        if (entry.sampled === 0) {
+          fillRateValue.textContent = 'No records found';
+          fillRateValue.style.color = tokens.color.textMuted;
+          return;
+        }
+
+        const barColor = entry.rate > 50
+          ? tokens.color.success
+          : entry.rate > 20
+            ? tokens.color.warning
+            : tokens.color.error;
+
+        const barContainer = document.createElement('div');
+        barContainer.setAttribute('style', `
+          width: 100%;
+          height: 6px;
+          background: ${tokens.color.surfaceSubtle};
+          border-radius: ${tokens.radius.pill};
+          overflow: hidden;
+        `);
+
+        const barFill = document.createElement('div');
+        barFill.setAttribute('style', `
+          width: ${entry.rate}%;
+          height: 100%;
+          background: ${barColor};
+          border-radius: ${tokens.radius.pill};
+          transition: width 0.3s ease;
+        `);
+        barContainer.appendChild(barFill);
+
+        const text = document.createElement('span');
+        text.textContent = `${entry.rate}% populated (${entry.filled} / ${entry.sampled} sampled)`;
+        text.setAttribute('style', `
+          color: ${tokens.color.textPrimary};
+          font-size: ${tokens.font.size.sm};
+        `);
+
+        fillRateValue.append(barContainer, text);
+      })
+      .catch(() => {
+        if (!popoverEl) return;
+        fillRateValue.textContent = 'Usage data unavailable';
+        fillRateValue.style.color = tokens.color.textMuted;
+      });
+  }
+
   const actions = document.createElement('div');
   actions.setAttribute('style', `
     display: flex;
@@ -533,7 +686,7 @@ function renderPopover(anchor: HTMLElement, fieldInfo: FieldInfo): void {
     actions.appendChild(copyRelationshipBtn);
   }
 
-  popover.append(header, tags, facts, actions);
+  popover.append(header, tags, facts, ...(fillRateSection.childElementCount > 0 ? [fillRateSection] : []), actions);
   document.body.appendChild(popover);
 
   popoverEl = popover;

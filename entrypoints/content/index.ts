@@ -14,6 +14,8 @@ import '../../modules/deep-dependency-inspector';
 import '../../modules/change-set-buddy';
 import '../../modules/profile-to-permset';
 import '../../modules/hide-devops-bar';
+import '../../modules/org-limits';
+import '../../modules/bulk-check';
 
 declare global {
   interface Window { __sfBoostLoaded?: boolean; }

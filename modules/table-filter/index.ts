@@ -7,6 +7,7 @@ const CONTAINER_CLASS = 'sfboost-table-filter';
 const HIGHLIGHT_CLASS = 'sfboost-tf-highlight';
 const NO_MATCH_CLASS = 'sfboost-tf-no-match';
 const AUTO_HYDRATE_MAX_ROWS = 200;
+const OBJECT_MANAGER_FIELDS_PATTERN = /\/lightning\/setup\/ObjectManager\/\w+\/FieldsAndRelationships\/view/i;
 const HYDRATE_STEP_DELAY_MS = 120;
 const HYDRATE_MAX_STEPS = 60;
 const SCROLLABLE_OVERFLOWS = new Set(['auto', 'overlay', 'scroll']);
@@ -245,6 +246,58 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
   container.appendChild(input);
   container.appendChild(count);
   container.appendChild(clearBtn);
+
+  // "Load All" button for lazy-loaded tables (e.g., Object Manager fields)
+  if (isLightningGridTable(table)) {
+    const expected = getExpectedRowCount(table);
+    const loaded = getBodyRows(table).length;
+    if (expected != null && loaded < expected && expected > AUTO_HYDRATE_MAX_ROWS) {
+      const loadAllBtn = document.createElement('button');
+      loadAllBtn.textContent = 'Load All';
+      loadAllBtn.title = `Load all ${expected} rows`;
+      loadAllBtn.setAttribute('style', `
+        padding: 3px ${tokens.space.md};
+        border: 1px solid ${tokens.color.borderInput};
+        border-radius: ${tokens.radius.sm};
+        background: ${tokens.color.surfaceBase};
+        color: ${tokens.color.primary};
+        font-size: ${tokens.font.size.sm};
+        font-family: ${tokens.font.family.sans};
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: background ${tokens.transition.fast}, border-color ${tokens.transition.fast};
+      `);
+      loadAllBtn.addEventListener('mouseenter', () => {
+        loadAllBtn.style.background = tokens.color.surfaceSelected;
+        loadAllBtn.style.borderColor = tokens.color.primaryBorder;
+      });
+      loadAllBtn.addEventListener('mouseleave', () => {
+        loadAllBtn.style.background = tokens.color.surfaceBase;
+        loadAllBtn.style.borderColor = tokens.color.borderInput;
+      });
+      loadAllBtn.addEventListener('click', () => {
+        loadAllBtn.disabled = true;
+        loadAllBtn.style.opacity = '0.6';
+        loadAllBtn.style.cursor = 'default';
+        loadAllBtn.textContent = 'Loading...';
+
+        void ensureRowsLoaded(table, state, true).then(() => {
+          const liveState = tableStates.get(table);
+          if (liveState !== state || !table.isConnected) return;
+          loadAllBtn.textContent = 'All loaded';
+          loadAllBtn.style.color = tokens.color.success;
+          loadAllBtn.style.borderColor = tokens.color.success;
+          updateCount(table, count, state.activeQuery);
+
+          if (state.activeQuery.trim()) {
+            applyFilterToLoadedRows(table, state.activeQuery, count);
+          }
+        });
+      });
+      container.appendChild(loadAllBtn);
+    }
+  }
 
   updateCount(table, count, '');
 
@@ -548,13 +601,19 @@ function updateCount(table: HTMLTableElement, countEl: HTMLElement, query: strin
   countEl.textContent = partiallyLoaded ? `${visible} / ${loaded} loaded` : `${visible} / ${loaded}`;
 }
 
+function isObjectManagerFieldsPage(): boolean {
+  return OBJECT_MANAGER_FIELDS_PATTERN.test(window.location.pathname);
+}
+
 function maybeWarmupTable(table: HTMLTableElement): void {
   const state = tableStates.get(table);
   if (!state || state.preloadPromise || state.activeQuery.trim()) return;
   if (!isLightningGridTable(table)) return;
 
   const expected = getExpectedRowCount(table);
-  if (expected == null || expected > AUTO_HYDRATE_MAX_ROWS) return;
+  // On Object Manager fields pages, auto-hydrate up to 500 rows
+  const autoHydrateLimit = isObjectManagerFieldsPage() ? 500 : AUTO_HYDRATE_MAX_ROWS;
+  if (expected == null || expected > autoHydrateLimit) return;
   if (getBodyRows(table).length >= expected) {
     state.rowsHydrated = true;
     return;

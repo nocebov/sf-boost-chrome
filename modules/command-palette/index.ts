@@ -259,6 +259,9 @@ function createPaletteUI() {
       enterSubModeByName(qa.subMode);
     } else if (qa.actionId === 'toggle-debug-log') {
       handleToggleDebugLog();
+    } else if (qa.actionId === 'show-org-limits') {
+      closePalette();
+      document.dispatchEvent(new CustomEvent('sfboost:show-org-limits'));
     } else if (qa.customUrl) {
       closePalette();
       if (newTab) {
