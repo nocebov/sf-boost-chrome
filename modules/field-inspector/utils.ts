@@ -149,6 +149,60 @@ export function buildFieldIndex(fields: unknown): FieldIndex {
   return { byExactLabel, bySimplifiedLabel, byApiName };
 }
 
+export function resolveFieldInfoByApiName(index: FieldIndex, rawApiName: string): FieldInfo | null {
+  const normalized = rawApiName.trim().toLowerCase();
+  if (!normalized) return null;
+
+  return index.byApiName.get(normalized) ?? null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractApiNameFromTargetSelection(attributeValue: string, objectApiName?: string): string | null {
+  const normalized = attributeValue.trim();
+  if (!normalized) return null;
+
+  const recordFieldMatch = normalized.match(
+    /(?:^|[:./_-])RecordField(?:[:./_-])([A-Za-z0-9_]+)(?:[:./_-])([A-Za-z0-9_]+)(?:$|[:./_-])/i,
+  );
+  if (recordFieldMatch) {
+    const [, candidateObjectApiName, candidateFieldApiName] = recordFieldMatch;
+    if (!candidateFieldApiName) return null;
+    if (!objectApiName || candidateObjectApiName?.toLowerCase() === objectApiName.toLowerCase()) {
+      return candidateFieldApiName;
+    }
+  }
+
+  if (!objectApiName) {
+    return null;
+  }
+
+  const objectScopedMatch = normalized.match(
+    new RegExp(`(?:^|[:./_-])${escapeRegExp(objectApiName)}(?:[:./_-])([A-Za-z0-9_]+)(?:$|[:./_-])`, 'i'),
+  );
+
+  return objectScopedMatch?.[1] ?? null;
+}
+
+export function resolveFieldInfoFromAttributeValue(
+  index: FieldIndex,
+  attributeValue: string,
+  objectApiName?: string,
+): FieldInfo | null {
+  const normalized = attributeValue.trim();
+  if (!normalized) return null;
+
+  const exactMatch = resolveFieldInfoByApiName(index, normalized);
+  if (exactMatch) return exactMatch;
+
+  const extractedApiName = extractApiNameFromTargetSelection(normalized, objectApiName);
+  if (!extractedApiName) return null;
+
+  return resolveFieldInfoByApiName(index, extractedApiName);
+}
+
 function pickUniqueMatch(candidates: FieldInfo[] | undefined): FieldInfo | null {
   if (!candidates || candidates.length !== 1) {
     return null;
@@ -168,7 +222,7 @@ export function resolveFieldInfo(index: FieldIndex, rawLabelText: string): Field
   const simplifiedMatch = pickUniqueMatch(index.bySimplifiedLabel.get(simplified));
   if (simplifiedMatch) return simplifiedMatch;
 
-  return index.byApiName.get(normalized) ?? null;
+  return resolveFieldInfoByApiName(index, normalized);
 }
 
 export function buildFieldSetupUrl(instanceUrl: string, objectApiName: string, fieldApiName: string): string {

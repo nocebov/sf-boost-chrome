@@ -4,6 +4,8 @@ import {
   buildFieldSetupUrl,
   buildSelectSnippet,
   normalizeFieldLabelText,
+  resolveFieldInfoByApiName,
+  resolveFieldInfoFromAttributeValue,
   resolveFieldInfo,
 } from '../modules/field-inspector/utils';
 
@@ -43,6 +45,61 @@ describe('field-inspector utils', () => {
     expect(resolveFieldInfo(index, 'Parent Account (Lookup)')).toMatchObject({
       apiName: 'ParentId',
     });
+  });
+
+  it('resolves a field by api name case-insensitively', () => {
+    const index = buildFieldIndex([
+      {
+        label: 'Expected Revenue',
+        name: 'ExpectedRevenue',
+        type: 'currency',
+        nillable: true,
+        defaultedOnCreate: false,
+      },
+    ]);
+
+    expect(resolveFieldInfoByApiName(index, 'expectedrevenue')).toMatchObject({
+      apiName: 'ExpectedRevenue',
+    });
+  });
+
+  it('resolves a field from a Lightning target-selection attribute', () => {
+    const index = buildFieldIndex([
+      {
+        label: 'Primary Campaign Source',
+        name: 'CampaignId',
+        type: 'reference',
+        nillable: true,
+        defaultedOnCreate: false,
+      },
+    ]);
+
+    expect(
+      resolveFieldInfoFromAttributeValue(index, 'sfdc:RecordField.Opportunity.CampaignId', 'Opportunity'),
+    ).toMatchObject({
+      apiName: 'CampaignId',
+    });
+  });
+
+  it('ignores dotted relationship paths that are not real field api names', () => {
+    const index = buildFieldIndex([
+      {
+        label: 'Account Name',
+        name: 'AccountId',
+        type: 'reference',
+        nillable: true,
+        defaultedOnCreate: false,
+      },
+      {
+        label: 'Opportunity Name',
+        name: 'Name',
+        type: 'string',
+        nillable: false,
+        defaultedOnCreate: false,
+      },
+    ]);
+
+    expect(resolveFieldInfoFromAttributeValue(index, 'Account.Name', 'Opportunity')).toBeNull();
   });
 
   it('skips ambiguous labels instead of returning the wrong field', () => {

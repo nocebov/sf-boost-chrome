@@ -3,16 +3,29 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
 import { createModal, createSpinner, createButton, createFilterBar } from '../../lib/ui-helpers';
 import { showToast } from '../../lib/toast';
-import { assertSalesforceId, isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
+import { escapeSoqlString, isAllowedSalesforceDomain, isValidSalesforceId } from '../../lib/salesforce-utils';
 import { tokens } from '../../lib/design-tokens';
+import {
+  buildEntityDefinitionLookupQuery,
+  buildFieldDefinitionLookupQuery,
+  buildValidationRuleLookupQuery,
+  parseDependencyComponentCandidate,
+  pickResolvedComponentId,
+} from './utils';
 
 const BTN_ID = 'sfboost-deep-scan-btn';
 const MODAL_ID = 'sfboost-dependency-modal';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const INJECT_POLL_MS = 1_000;
+const INJECT_TIMEOUT_MS = 30_000;
 
 let currentCtx: ModuleContext | null = null;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 let observer: MutationObserver | null = null;
+let injectInFlight = false;
+let resolvedPageInfo: { url: string; info: PageInfo } | null = null;
+let pendingPageInfoPromise: Promise<PageInfo | null> | null = null;
 
 // --- Cache ---
 
@@ -44,77 +57,80 @@ interface PageInfo {
   componentType: string;
 }
 
-function extractSalesforceIdFromAddress(value: string | null): string | null {
-  if (!value) return null;
+async function resolveObjectApiName(objectToken: string, instanceUrl: string): Promise<string | null> {
+  if (!objectToken) return null;
+  if (!isValidSalesforceId(objectToken)) return objectToken;
 
-  const rawCandidate = value.match(/([a-zA-Z0-9]{15,18})/)?.[1];
-  if (rawCandidate) return rawCandidate;
+  const result = await sendMessage('executeToolingQuery', {
+    instanceUrl,
+    query: buildEntityDefinitionLookupQuery(objectToken),
+  });
 
-  try {
-    return decodeURIComponent(value).match(/([a-zA-Z0-9]{15,18})/)?.[1] ?? null;
-  } catch {
-    return null;
-  }
+  const qualifiedApiName = result?.records?.[0]?.QualifiedApiName;
+  return typeof qualifiedApiName === 'string' && qualifiedApiName.trim()
+    ? qualifiedApiName.trim()
+    : null;
 }
 
-function getComponentFromUrl(): PageInfo | null {
-  const pathname = window.location.pathname;
+async function resolveComponentFromCandidate(): Promise<PageInfo | null> {
+  if (!currentCtx) return null;
 
-  // Object Manager > Field: /lightning/setup/ObjectManager/{ObjectId}/FieldsAndRelationships/{FieldId}/view
-  const fieldMatch = pathname.match(
-    /\/lightning\/setup\/ObjectManager\/\w+\/FieldsAndRelationships\/(\w{15,18})\//
-  );
-  if (fieldMatch?.[1]) {
-    return { componentId: fieldMatch[1], componentType: 'CustomField' };
+  const candidate = parseDependencyComponentCandidate(window.location.pathname, window.location.search);
+  if (!candidate) return null;
+
+  if (candidate.componentId) {
+    return { componentId: candidate.componentId, componentType: candidate.componentType };
   }
 
-  // Object Manager > Validation Rules: /lightning/setup/ObjectManager/.../ValidationRules/{id}/view
-  const validationMatch = pathname.match(
-    /\/lightning\/setup\/ObjectManager\/\w+\/ValidationRules\/(\w{15,18})\//
-  );
-  if (validationMatch?.[1]) {
-    return { componentId: validationMatch[1], componentType: 'ValidationRule' };
+  const { objectToken, componentName, componentType } = candidate;
+  if (!objectToken || !componentName) return null;
+
+  const objectApiName = await resolveObjectApiName(objectToken, currentCtx.pageContext.instanceUrl);
+  if (!objectApiName) return null;
+
+  if (componentType === 'CustomField') {
+    const result = await sendMessage('executeToolingQuery', {
+      instanceUrl: currentCtx.pageContext.instanceUrl,
+      query: buildFieldDefinitionLookupQuery(objectApiName, componentName),
+    });
+    const componentId = pickResolvedComponentId(result?.records?.[0]);
+    return componentId ? { componentId, componentType } : null;
   }
 
-  // Apex Classes: /lightning/setup/ApexClasses/page?address=/{classId}
-  if (pathname.includes('/lightning/setup/ApexClasses/')) {
-    const address = new URLSearchParams(window.location.search).get('address');
-    const classId = extractSalesforceIdFromAddress(address);
-    if (classId) return { componentId: classId, componentType: 'ApexClass' };
-  }
-
-  // Apex Triggers: /lightning/setup/ApexTriggers/page?address=/{triggerId}
-  if (pathname.includes('/lightning/setup/ApexTriggers/')) {
-    const address = new URLSearchParams(window.location.search).get('address');
-    const triggerId = extractSalesforceIdFromAddress(address);
-    if (triggerId) return { componentId: triggerId, componentType: 'ApexTrigger' };
-  }
-
-  // Flows: /lightning/setup/Flows/{flowId}/view or /builder_platform_interaction/{flowId}
-  const flowMatch = pathname.match(/\/lightning\/setup\/Flows\/(\w{15,18})\/view/);
-  if (flowMatch?.[1]) {
-    return { componentId: flowMatch[1], componentType: 'Flow' };
-  }
-  const flowBuilderMatch = pathname.match(/\/builder_platform_interaction\/(\w{15,18})/);
-  if (flowBuilderMatch?.[1]) {
-    return { componentId: flowBuilderMatch[1], componentType: 'Flow' };
-  }
-
-  // Lightning Web Components: /lightning/setup/LightningComponentBundles/page?address=/{id}
-  if (pathname.includes('/lightning/setup/LightningComponentBundles/')) {
-    const address = new URLSearchParams(window.location.search).get('address');
-    const lwcId = extractSalesforceIdFromAddress(address);
-    if (lwcId) return { componentId: lwcId, componentType: 'LightningComponentBundle' };
-  }
-
-  // Aura Components: /lightning/setup/AuraBundleDefinitions/page?address=/{id}
-  if (pathname.includes('/lightning/setup/AuraBundleDefinitions/')) {
-    const address = new URLSearchParams(window.location.search).get('address');
-    const auraId = extractSalesforceIdFromAddress(address);
-    if (auraId) return { componentId: auraId, componentType: 'AuraDefinitionBundle' };
+  if (componentType === 'ValidationRule') {
+    const result = await sendMessage('executeToolingQuery', {
+      instanceUrl: currentCtx.pageContext.instanceUrl,
+      query: buildValidationRuleLookupQuery(objectApiName, componentName),
+    });
+    const componentId = pickResolvedComponentId(result?.records?.[0]);
+    return componentId ? { componentId, componentType } : null;
   }
 
   return null;
+}
+
+async function getComponentFromUrl(): Promise<PageInfo | null> {
+  const currentUrl = window.location.href;
+  if (resolvedPageInfo?.url === currentUrl) {
+    return resolvedPageInfo.info;
+  }
+
+  if (pendingPageInfoPromise) {
+    return pendingPageInfoPromise;
+  }
+
+  pendingPageInfoPromise = resolveComponentFromCandidate()
+    .then((info) => {
+      if (info) {
+        resolvedPageInfo = { url: currentUrl, info };
+      }
+      return info;
+    })
+    .finally(() => {
+      pendingPageInfoPromise = null;
+    });
+
+  return pendingPageInfoPromise;
 }
 
 function findNodeInDocumentOrIframes(selectors: string[]): Element | null {
@@ -160,11 +176,39 @@ function extractComponentNameFromHeader(): string | null {
 
 // --- Button Injection ---
 
-function injectButton(): boolean {
-  if (document.getElementById(BTN_ID)) return true;
+function hasInjectedButton(): boolean {
+  return Boolean(findNodeInDocumentOrIframes([`#${BTN_ID}`]));
+}
 
-  const info = getComponentFromUrl();
-  if (!info?.componentId) return false;
+function applyDisabledStyle(btn: HTMLButtonElement, reason: string): void {
+  btn.disabled = true;
+  btn.title = reason;
+  Object.assign(btn.style, {
+    background: tokens.color.borderMuted,
+    color: tokens.color.textMuted,
+    cursor: 'not-allowed',
+    opacity: '0.7',
+  });
+}
+
+function probeComponentResolution(btn: HTMLButtonElement): void {
+  if (!currentCtx) return;
+  getComponentFromUrl()
+    .then((info) => {
+      if (!info?.componentId) {
+        applyDisabledStyle(btn, 'Cannot scan: standard field or Tooling API unavailable');
+      }
+    })
+    .catch(() => {
+      applyDisabledStyle(btn, 'Cannot scan: Tooling API unavailable');
+    });
+}
+
+function injectButton(): boolean {
+  if (hasInjectedButton()) return true;
+
+  const candidate = parseDependencyComponentCandidate(window.location.pathname, window.location.search);
+  if (!candidate) return false;
 
   const headerSelectors = [
     '.slds-page-header__title',
@@ -173,42 +217,73 @@ function injectButton(): boolean {
     '.test-id__field-header',
     '.entityNameTitle',
     '.pageDescription',
+    // Classic-style setup pages (salesforce-setup.com iframes)
+    '.pbTitle',
+    '.bPageTitle',
+    '.brandTertiaryBgr h2',
   ];
 
   const header = findNodeInDocumentOrIframes(headerSelectors);
-  if (!header) return false;
 
-  const btn = createButton('Deep Scan', { small: false });
+  const btn = createButton('Deep Scan', { small: true });
   btn.id = BTN_ID;
-  btn.style.marginLeft = tokens.space.lg;
-  btn.style.verticalAlign = 'middle';
+  btn.addEventListener('click', () => {
+    void runDeepScan();
+  });
 
-  btn.addEventListener('click', () => runDeepScan());
-
-  if (header.parentElement) {
+  if (header?.parentElement) {
+    btn.style.marginLeft = tokens.space.md;
+    btn.style.verticalAlign = 'middle';
     header.parentElement.insertBefore(btn, header.nextSibling);
+  } else {
+    // FAB fallback when no header element is found
+    Object.assign(btn.style, {
+      position: 'fixed',
+      bottom: '20px',
+      right: '20px',
+      zIndex: tokens.zIndex.fab,
+      borderRadius: tokens.radius.pill,
+      boxShadow: tokens.shadow.md,
+    });
+    document.body.appendChild(btn);
   }
+
+  // Background check — gray out if component can't be resolved
+  probeComponentResolution(btn);
 
   return true;
 }
 
-function scheduleInject(): void {
-  cancelRetry();
-  // Try immediately
-  if (injectButton()) return;
+function attemptInject(): void {
+  if (injectInFlight) return;
 
-  // Use MutationObserver to detect when header appears
-  observer = new MutationObserver(() => {
+  injectInFlight = true;
+  try {
     if (injectButton()) {
       disconnectObserver();
     }
+  } finally {
+    injectInFlight = false;
+  }
+}
+
+function scheduleInject(): void {
+  disconnectObserver();
+  cancelRetry();
+  attemptInject();
+
+  observer = new MutationObserver(() => {
+    attemptInject();
   });
   observer.observe(document.body, { childList: true, subtree: true });
 
-  // Safety fallback: stop observing after 10 seconds
+  pollTimer = setInterval(() => {
+    attemptInject();
+  }, INJECT_POLL_MS);
+
   retryTimer = setTimeout(() => {
     disconnectObserver();
-  }, 10_000);
+  }, INJECT_TIMEOUT_MS);
 }
 
 function disconnectObserver(): void {
@@ -223,6 +298,10 @@ function cancelRetry(): void {
   if (retryTimer) {
     clearTimeout(retryTimer);
     retryTimer = null;
+  }
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
 }
 
@@ -273,7 +352,7 @@ async function fetchDependencies(
     if (cached) return cached;
   }
 
-  const safeId = assertSalesforceId(componentId, 'component');
+  const safeId = escapeSoqlString(componentId);
   const whereClause = direction === 'usedBy'
     ? `RefMetadataComponentId = '${safeId}'`
     : `MetadataComponentId = '${safeId}'`;
@@ -288,10 +367,38 @@ async function fetchDependencies(
 async function runDeepScan(forceRefresh = false): Promise<void> {
   if (!currentCtx) return;
 
-  const info = getComponentFromUrl();
-  if (!info?.componentId) {
-    showToast('Could not determine component ID from URL');
+  const btn = findNodeInDocumentOrIframes([`#${BTN_ID}`]) as HTMLButtonElement | null;
+
+  // If already grayed out by probe, show toast with reason
+  if (btn?.disabled && btn.title) {
+    showToast(btn.title);
     return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Resolving...';
+  }
+
+  let info: PageInfo | null;
+  try {
+    info = await getComponentFromUrl();
+  } catch {
+    info = null;
+  }
+
+  if (!info?.componentId) {
+    if (btn) {
+      applyDisabledStyle(btn, 'Cannot scan: standard field or Tooling API unavailable');
+      btn.textContent = 'Deep Scan';
+    }
+    showToast('Cannot scan: standard field or Tooling API unavailable');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Deep Scan';
   }
 
   const displayName = extractComponentNameFromHeader() ?? info.componentId;
@@ -479,18 +586,20 @@ function renderError(container: HTMLElement, message: string, direction: ScanDir
     loadingDiv.appendChild(loadingText);
     container.appendChild(loadingDiv);
 
-    const info = getComponentFromUrl();
-    if (!info || !currentCtx) return;
+    void (async () => {
+      const info = await getComponentFromUrl();
+      if (!info || !currentCtx) return;
 
-    fetchDependencies(currentCtx.pageContext.instanceUrl, info.componentId, direction, true)
-      .then(records => {
-        container.innerHTML = '';
-        renderResults(container, records, direction);
-      })
-      .catch(err => {
-        container.innerHTML = '';
-        renderError(container, err.message, direction);
-      });
+      fetchDependencies(currentCtx.pageContext.instanceUrl, info.componentId, direction, true)
+        .then(records => {
+          container.innerHTML = '';
+          renderResults(container, records, direction);
+        })
+        .catch(err => {
+          container.innerHTML = '';
+          renderError(container, err.message, direction);
+        });
+    })();
   });
   errorDiv.appendChild(retryBtn);
 
@@ -733,10 +842,15 @@ function removeModal(): void {
   document.getElementById(`${MODAL_ID}-backdrop`)?.remove();
 }
 
+function clearResolvedPageInfo(): void {
+  resolvedPageInfo = null;
+  pendingPageInfoPromise = null;
+}
+
 // --- Module ---
 
 function isRelevantPage(): boolean {
-  return getComponentFromUrl() !== null;
+  return parseDependencyComponentCandidate(window.location.pathname, window.location.search) !== null;
 }
 
 const deepDependencyInspector: SFBoostModule = {
@@ -746,6 +860,7 @@ const deepDependencyInspector: SFBoostModule = {
 
   async init(ctx: ModuleContext) {
     currentCtx = ctx;
+    clearResolvedPageInfo();
     if (isRelevantPage()) {
       scheduleInject();
     }
@@ -753,6 +868,7 @@ const deepDependencyInspector: SFBoostModule = {
 
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
+    clearResolvedPageInfo();
     disconnectObserver();
     removeButton();
     removeModal();
@@ -762,6 +878,7 @@ const deepDependencyInspector: SFBoostModule = {
   },
 
   destroy() {
+    clearResolvedPageInfo();
     disconnectObserver();
     removeButton();
     removeModal();

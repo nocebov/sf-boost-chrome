@@ -10,18 +10,39 @@ import {
   buildSelectSnippet,
   normalizeFieldLabelText,
   resolveFieldInfo,
+  resolveFieldInfoFromAttributeValue,
   type FieldIndex,
   type FieldInfo,
 } from './utils';
 
 const BADGE_CLASS = 'sfboost-field-badge';
 const POPOVER_ID = 'sfboost-field-popover';
+const RECORD_FIELD_CONTAINER_SELECTOR = 'records-record-layout-item';
 const RECORD_LABEL_SELECTOR =
   'span.test-id__field-label, ' +
   '.slds-form-element__label:not(:has(span.test-id__field-label)), ' +
   'records-record-layout-item span[class*="label"]:not(:has(span.test-id__field-label))';
 const LIST_HEADER_SELECTOR = 'table[role="grid"] thead th[role="columnheader"], table[role="grid"] thead th';
 const TEXT_STRIP_SELECTOR = `.${BADGE_CLASS}, lightning-helptext, abbr.slds-required, button, svg, use`;
+const RECORD_LABEL_CANDIDATE_SELECTORS = [
+  'span.test-id__field-label',
+  'label.slds-form-element__label',
+  '.slds-form-element__label',
+  '[slot="label"]',
+  '[data-target-selection-name*="field-label" i]',
+  '[class*="field-label"]',
+  '[class*="fieldLabel"]',
+  'label',
+  'span[class*="label"]',
+  'div[class*="label"]',
+];
+const RECORD_FIELD_ATTRIBUTE_SOURCES = [
+  { selector: '[data-target-selection-name]', attribute: 'data-target-selection-name' },
+  { selector: '[field-name]', attribute: 'field-name' },
+  { selector: '[data-field]', attribute: 'data-field' },
+  { selector: '[data-field-name]', attribute: 'data-field-name' },
+  { selector: '[data-record-field]', attribute: 'data-record-field' },
+] as const;
 
 let currentCtx: ModuleContext | null = null;
 let cachedObjectApiName: string | null = null;
@@ -99,6 +120,123 @@ function extractListHeaderText(header: HTMLElement): string {
     .filter((value) => value && !/(sort|action|resize|menu|select all)/i.test(value));
 
   return titleCandidates[0] ?? extractCleanText(header);
+}
+
+function dedupeFieldInfos(candidates: Array<FieldInfo | null | undefined>): FieldInfo[] {
+  const byApiName = new Map<string, FieldInfo>();
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    byApiName.set(candidate.apiName.toLowerCase(), candidate);
+  }
+
+  return Array.from(byApiName.values());
+}
+
+function intersectFieldInfos(left: FieldInfo[], right: FieldInfo[]): FieldInfo[] {
+  const rightApiNames = new Set(right.map((fieldInfo) => fieldInfo.apiName.toLowerCase()));
+  return left.filter((fieldInfo) => rightApiNames.has(fieldInfo.apiName.toLowerCase()));
+}
+
+function collectRecordLabelCandidates(container: HTMLElement): HTMLElement[] {
+  const seen = new Set<HTMLElement>();
+  const candidates: HTMLElement[] = [];
+
+  for (const selector of RECORD_LABEL_CANDIDATE_SELECTORS) {
+    container.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+      if (seen.has(element)) return;
+      if (!extractCleanText(element)) return;
+
+      seen.add(element);
+      candidates.push(element);
+    });
+  }
+
+  return candidates;
+}
+
+function collectAttributeElements(container: HTMLElement, selector: string): HTMLElement[] {
+  const elements: HTMLElement[] = [];
+  const seen = new Set<HTMLElement>();
+
+  if (container.matches(selector)) {
+    seen.add(container);
+    elements.push(container);
+  }
+
+  container.querySelectorAll<HTMLElement>(selector).forEach((element) => {
+    if (seen.has(element)) return;
+    seen.add(element);
+    elements.push(element);
+  });
+
+  return elements;
+}
+
+function collectRecordFieldInfosFromAttributes(
+  fieldIndex: FieldIndex,
+  container: HTMLElement,
+  objectApiName: string,
+): FieldInfo[] {
+  const candidates: Array<FieldInfo | null> = [];
+
+  for (const source of RECORD_FIELD_ATTRIBUTE_SOURCES) {
+    for (const element of collectAttributeElements(container, source.selector)) {
+      const attributeValue = element.getAttribute(source.attribute);
+      if (!attributeValue) continue;
+
+      candidates.push(resolveFieldInfoFromAttributeValue(fieldIndex, attributeValue, objectApiName));
+    }
+  }
+
+  return dedupeFieldInfos(candidates);
+}
+
+function collectRecordFieldInfosFromLabels(fieldIndex: FieldIndex, container: HTMLElement): FieldInfo[] {
+  return dedupeFieldInfos(
+    collectRecordLabelCandidates(container).map((labelEl) =>
+      resolveFieldInfo(fieldIndex, extractCleanText(labelEl))),
+  );
+}
+
+function resolveRecordFieldInfo(
+  fieldIndex: FieldIndex,
+  container: HTMLElement,
+  objectApiName: string,
+): FieldInfo | null {
+  const attributeMatches = collectRecordFieldInfosFromAttributes(fieldIndex, container, objectApiName);
+  const labelMatches = collectRecordFieldInfosFromLabels(fieldIndex, container);
+  const overlappingMatches = intersectFieldInfos(attributeMatches, labelMatches);
+
+  if (overlappingMatches.length === 1) {
+    return overlappingMatches[0] ?? null;
+  }
+  if (attributeMatches.length === 1) {
+    return attributeMatches[0] ?? null;
+  }
+  if (labelMatches.length === 1) {
+    return labelMatches[0] ?? null;
+  }
+
+  return null;
+}
+
+function findBestRecordBadgeMount(
+  fieldIndex: FieldIndex,
+  container: HTMLElement,
+  fieldInfo: FieldInfo,
+): HTMLElement | null {
+  const labelCandidates = collectRecordLabelCandidates(container);
+  if (labelCandidates.length === 0) {
+    return null;
+  }
+
+  const matchingLabel = labelCandidates.find((labelEl) => {
+    const resolved = resolveFieldInfo(fieldIndex, extractCleanText(labelEl));
+    return resolved?.apiName.toLowerCase() === fieldInfo.apiName.toLowerCase();
+  });
+
+  return matchingLabel ?? labelCandidates[0] ?? null;
 }
 
 function closePopover(): void {
@@ -476,6 +614,22 @@ function findListBadgeMount(header: HTMLElement): HTMLElement {
 }
 
 function applyRecordBadges(fieldIndex: FieldIndex): void {
+  const objectApiName = currentCtx?.pageContext.objectApiName;
+
+  if (objectApiName) {
+    document.querySelectorAll<HTMLElement>(RECORD_FIELD_CONTAINER_SELECTOR).forEach((container) => {
+      if (container.querySelector(`.${BADGE_CLASS}`)) return;
+
+      const fieldInfo = resolveRecordFieldInfo(fieldIndex, container, objectApiName);
+      if (!fieldInfo) return;
+
+      const badgeMount = findBestRecordBadgeMount(fieldIndex, container, fieldInfo);
+      if (!badgeMount || badgeMount.querySelector(`.${BADGE_CLASS}`)) return;
+
+      badgeMount.appendChild(createFieldBadge(fieldInfo, 'record'));
+    });
+  }
+
   document.querySelectorAll<HTMLElement>(RECORD_LABEL_SELECTOR).forEach((labelEl) => {
     if (labelEl.querySelector(`.${BADGE_CLASS}`)) return;
 
