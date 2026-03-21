@@ -6,7 +6,7 @@ export default defineConfig({
     name: 'SF Boost',
     short_name: 'SF Boost',
     description: 'Salesforce productivity toolkit for admins and developers.',
-    version: '0.5.0',
+    version: '0.6.0',
     homepage_url: 'https://github.com/nocebov/sf-boost-chrome',
     icons: {
       16: 'icon-16.png',
