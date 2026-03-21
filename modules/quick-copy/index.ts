@@ -1,10 +1,12 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
+import { getModuleSettings } from '../../lib/storage';
 import { showToast } from '../../lib/toast';
 import { tokens } from '../../lib/design-tokens';
 
 const COPY_BTN_CLASS = 'sfboost-copy-btn';
 let currentCtx: ModuleContext | null = null;
+let qcSettings: Record<string, boolean> = {};
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 function createCopyButton(text: string, tooltip: string): HTMLButtonElement {
@@ -343,10 +345,11 @@ const quickCopy: SFBoostModule = {
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
+    qcSettings = await getModuleSettings('quick-copy');
     currentCtx = ctx;
-    if (ctx.pageContext.pageType === 'record') {
+    if (ctx.pageContext.pageType === 'record' && qcSettings.copyId !== false) {
       scheduleInject();
-    } else if (ctx.pageContext.pageType === 'list') {
+    } else if (ctx.pageContext.pageType === 'list' && qcSettings.copyName !== false) {
       scheduleListInject();
     }
   },
@@ -358,9 +361,9 @@ const quickCopy: SFBoostModule = {
     removeCopyButtons();
     removeListViewCopy();
     if (listRetryTimer) { clearTimeout(listRetryTimer); listRetryTimer = null; }
-    if (ctx.pageContext.pageType === 'record') {
+    if (ctx.pageContext.pageType === 'record' && qcSettings.copyId !== false) {
       scheduleInject();
-    } else if (ctx.pageContext.pageType === 'list') {
+    } else if (ctx.pageContext.pageType === 'list' && qcSettings.copyName !== false) {
       scheduleListInject();
     }
   },

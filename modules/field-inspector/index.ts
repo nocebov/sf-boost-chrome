@@ -1,6 +1,7 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
+import { getModuleSettings } from '../../lib/storage';
 import { showToast } from '../../lib/toast';
 import { tokens } from '../../lib/design-tokens';
 import { createBadge, createButton } from '../../lib/ui-helpers';
@@ -55,8 +56,12 @@ let listenersAttached = false;
 let popoverEl: HTMLDivElement | null = null;
 let popoverAnchor: HTMLElement | null = null;
 
+let moduleSettingsCache: Record<string, boolean> = {};
+
 function isSupportedPageType(pageType: ModuleContext['pageContext']['pageType']): boolean {
-  return pageType === 'record' || pageType === 'list';
+  if (pageType === 'record') return moduleSettingsCache.showOnRecords !== false;
+  if (pageType === 'list') return moduleSettingsCache.showOnListViews !== false;
+  return false;
 }
 
 async function copyText(value: string, successMessage: string): Promise<void> {
@@ -741,6 +746,7 @@ const fieldInspector: SFBoostModule = {
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
 
+    moduleSettingsCache = await getModuleSettings('field-inspector');
     currentCtx = ctx;
     attachListeners();
 

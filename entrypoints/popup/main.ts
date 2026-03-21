@@ -144,6 +144,10 @@ document.addEventListener('change', async (e) => {
   );
 });
 
+document.getElementById('settings-btn')?.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('/settings.html') });
+});
+
 document.getElementById('shortcuts-btn')?.addEventListener('click', () => {
   chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
 });

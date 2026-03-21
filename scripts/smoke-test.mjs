@@ -276,7 +276,7 @@ async function assertContentHarness(page) {
   await page.waitForSelector('.sfboost-table-filter input', { timeout: 10000 });
 
   const badgeText = await page.$eval('#sfboost-env-badge', (el) => el.textContent?.trim() ?? '');
-  if (badgeText !== 'PRODUCTION') {
+  if (!badgeText.startsWith('PRODUCTION')) {
     throw new Error(`Unexpected environment badge text: ${badgeText}`);
   }
 

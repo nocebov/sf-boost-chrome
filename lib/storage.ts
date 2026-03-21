@@ -1,4 +1,4 @@
-import { DEFAULT_ENABLED_MODULE_IDS, MODULE_CATALOG } from '../modules/catalog';
+import { DEFAULT_ENABLED_MODULE_IDS, MODULE_CATALOG, type ModuleSettingDef } from '../modules/catalog';
 
 export const STORAGE_VERSION = 1;
 
@@ -136,6 +136,50 @@ export async function setQuickActionConfig(config: QuickActionConfig): Promise<v
 
 export async function resetQuickActionConfig(): Promise<void> {
   await chrome.storage.sync.remove('commandPaletteQuickActions');
+}
+
+// Module-specific settings
+export type ModuleSettings = Record<string, boolean>;
+
+const MODULE_SETTINGS_MAP = new Map<string, ModuleSettingDef[]>();
+for (const mod of MODULE_CATALOG) {
+  if (mod.settings?.length) MODULE_SETTINGS_MAP.set(mod.id, mod.settings);
+}
+
+function normalizeModuleSettings(moduleId: string, raw: unknown): ModuleSettings {
+  const defs = MODULE_SETTINGS_MAP.get(moduleId);
+  if (!defs) return {};
+
+  const result: ModuleSettings = {};
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+
+  for (const def of defs) {
+    result[def.key] = typeof source[def.key] === 'boolean' ? (source[def.key] as boolean) : def.default;
+  }
+  return result;
+}
+
+export async function getModuleSettings(moduleId: string): Promise<ModuleSettings> {
+  const result = await chrome.storage.sync.get('moduleSettings');
+  const all = (result.moduleSettings as Record<string, ModuleSettings> | undefined) ?? {};
+  return normalizeModuleSettings(moduleId, all[moduleId]);
+}
+
+export async function setModuleSettings(moduleId: string, settings: ModuleSettings): Promise<void> {
+  const result = await chrome.storage.sync.get('moduleSettings');
+  const all = (result.moduleSettings as Record<string, ModuleSettings> | undefined) ?? {};
+  all[moduleId] = normalizeModuleSettings(moduleId, { ...all[moduleId], ...settings });
+  await chrome.storage.sync.set({ moduleSettings: all });
+}
+
+export async function getAllModuleSettings(): Promise<Record<string, ModuleSettings>> {
+  const result = await chrome.storage.sync.get('moduleSettings');
+  const raw = (result.moduleSettings as Record<string, unknown> | undefined) ?? {};
+  const normalized: Record<string, ModuleSettings> = {};
+  for (const [moduleId] of MODULE_SETTINGS_MAP) {
+    normalized[moduleId] = normalizeModuleSettings(moduleId, raw[moduleId]);
+  }
+  return normalized;
 }
 
 // Describe cache with TTL (1 hour) and max entries

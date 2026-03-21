@@ -1,5 +1,12 @@
 export type ModuleAccessLevel = 'ui-only' | 'read-only' | 'write-capable';
 
+export interface ModuleSettingDef {
+  key: string;
+  label: string;
+  type: 'boolean';
+  default: boolean;
+}
+
 export interface ModuleCatalogEntry {
   id: string;
   name: string;
@@ -7,6 +14,7 @@ export interface ModuleCatalogEntry {
   info: string;
   defaultEnabled: boolean;
   accessLevel: ModuleAccessLevel;
+  settings?: ModuleSettingDef[];
 }
 
 export const MODULE_CATALOG: ModuleCatalogEntry[] = [
@@ -25,6 +33,10 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     info: 'Reveals API names next to record fields and list-view columns. Click a badge for field metadata, copy helpers, and a shortcut to the field in Object Manager. Uses Salesforce describe metadata from the active org only when the module is enabled.',
     defaultEnabled: true,
     accessLevel: 'read-only',
+    settings: [
+      { key: 'showOnRecords', label: 'Show on record pages', type: 'boolean', default: true },
+      { key: 'showOnListViews', label: 'Show on list views', type: 'boolean', default: true },
+    ],
   },
   {
     id: 'quick-copy',
@@ -33,6 +45,10 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     info: 'Adds a fast copy icon next to Record IDs and names. Click the icon to copy the value locally to the clipboard.',
     defaultEnabled: true,
     accessLevel: 'ui-only',
+    settings: [
+      { key: 'copyId', label: 'Copy button on record pages', type: 'boolean', default: true },
+      { key: 'copyName', label: 'Copy buttons on list views', type: 'boolean', default: true },
+    ],
   },
   {
     id: 'table-filter',
@@ -45,10 +61,15 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   {
     id: 'environment-safeguard',
     name: 'Environment Safeguard',
-    description: 'Color-coded environment indicator',
-    info: 'Displays a colored indicator on screen. Helps visually distinguish Production from Sandbox to avoid accidental changes.',
+    description: 'Color-coded environment indicator, favicon, and org clock',
+    info: 'Displays a colored indicator on screen, recolors the Salesforce tab favicon by environment, and shows a live clock for the org\'s default timezone. Helps visually distinguish Production from Sandbox to avoid accidental changes.',
     defaultEnabled: true,
-    accessLevel: 'ui-only',
+    accessLevel: 'read-only',
+    settings: [
+      { key: 'showClock', label: 'Show org clock', type: 'boolean', default: true },
+      { key: 'showFavicon', label: 'Show colored favicon', type: 'boolean', default: true },
+      { key: 'showTitlePrefix', label: 'Show environment prefix in tab title', type: 'boolean', default: true },
+    ],
   },
   {
     id: 'deep-dependency-inspector',
