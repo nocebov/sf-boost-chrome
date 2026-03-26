@@ -6,8 +6,8 @@ import {
 } from '../modules/catalog';
 
 describe('MODULE_CATALOG', () => {
-  it('has 9 modules', () => {
-    expect(MODULE_CATALOG).toHaveLength(9);
+  it('has 11 modules', () => {
+    expect(MODULE_CATALOG).toHaveLength(11);
   });
 
   it('all modules have unique IDs', () => {
@@ -42,7 +42,9 @@ describe('MODULE_CATALOG', () => {
       'deep-dependency-inspector',
       'change-set-buddy',
       'profile-to-permset',
+      'bulk-check',
       'hide-devops-bar',
+      'console-formatter',
     ];
 
     for (const id of expectedModules) {
@@ -109,8 +111,8 @@ describe('DEFAULT_ENABLED_MODULE_IDS', () => {
 });
 
 describe('DISABLED_BY_DEFAULT_MODULE_IDS', () => {
-  it('contains 4 disabled-by-default modules', () => {
-    expect(DISABLED_BY_DEFAULT_MODULE_IDS).toHaveLength(4);
+  it('contains 6 disabled-by-default modules', () => {
+    expect(DISABLED_BY_DEFAULT_MODULE_IDS).toHaveLength(6);
   });
 
   it('includes deep-dependency-inspector', () => {
@@ -127,6 +129,14 @@ describe('DISABLED_BY_DEFAULT_MODULE_IDS', () => {
 
   it('includes change-set-buddy', () => {
     expect(DISABLED_BY_DEFAULT_MODULE_IDS).toContain('change-set-buddy');
+  });
+
+  it('includes bulk-check', () => {
+    expect(DISABLED_BY_DEFAULT_MODULE_IDS).toContain('bulk-check');
+  });
+
+  it('includes console-formatter', () => {
+    expect(DISABLED_BY_DEFAULT_MODULE_IDS).toContain('console-formatter');
   });
 
   it('does NOT overlap with DEFAULT_ENABLED_MODULE_IDS', () => {

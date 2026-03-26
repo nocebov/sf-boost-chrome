@@ -1,10 +1,21 @@
 import { onMessage } from '../../lib/messaging';
 import { getSessionFromCookie, clearSessionCache } from './session-manager';
-import { migrateStorage } from '../../lib/storage';
+import { DEFAULTS, getEnabledModules, migrateStorage } from '../../lib/storage';
 import { logger } from '../../lib/logger';
 import { describeObject, executeSOQL, executeSOQLAll, executeToolingQueryAll, createPermissionSet, toggleDebugLog, getOrgLimits } from './api-client';
 import { buildInstanceUrl } from '../../lib/salesforce-urls';
 import { assertAllowedSalesforceInstanceUrl, isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
+import {
+  CONSOLE_FORMATTER_ACTIVATE_MESSAGE,
+  CONSOLE_FORMATTER_DEACTIVATE_MESSAGE,
+  isConsoleFormatterSupportedHost,
+} from '../../modules/console-formatter/constants';
+import {
+  injectConsoleFormatterIntoTab,
+  isConsoleFormatterEnabled,
+  syncConsoleFormatterRegistration,
+  teardownConsoleFormatterInTab,
+} from '../../modules/console-formatter/registration';
 
 function isAuthError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
@@ -78,14 +89,64 @@ function assertSenderMatchesInstanceUrl(
   return normalizedInstanceUrl;
 }
 
+async function syncConsoleFormatterRegistrationFromStorage(): Promise<void> {
+  const enabledIds = await getEnabledModules();
+  await syncConsoleFormatterRegistration(isConsoleFormatterEnabled(enabledIds));
+}
+
 export default defineBackground(() => {
   // Run storage migrations on install/update
   chrome.runtime.onInstalled.addListener(() => {
     migrateStorage().catch(e => logger.error(`Storage migration failed: ${e}`));
+    syncConsoleFormatterRegistrationFromStorage().catch((e) => {
+      logger.error(`Console Formatter registration sync failed: ${e}`);
+    });
+  });
+
+  syncConsoleFormatterRegistrationFromStorage().catch((e) => {
+    logger.error(`Initial Console Formatter registration sync failed: ${e}`);
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'sync' || !changes.enabledModules) return;
+
+    const nextEnabled = Array.isArray(changes.enabledModules.newValue)
+      ? changes.enabledModules.newValue
+      : DEFAULTS.enabledModules;
+
+    syncConsoleFormatterRegistration(isConsoleFormatterEnabled(nextEnabled)).catch((e) => {
+      logger.error(`Console Formatter registration update failed: ${e}`);
+    });
   });
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type !== 'updateBadge' || sender.id !== chrome.runtime.id || !sender.tab?.id) {
+    if (sender.id !== chrome.runtime.id) return;
+
+    if (message.type === CONSOLE_FORMATTER_ACTIVATE_MESSAGE && sender.tab?.id) {
+      const senderUrl = getSenderSalesforcePageUrl(sender);
+      if (!senderUrl || !isConsoleFormatterSupportedHost(senderUrl.hostname)) {
+        sendResponse({ ok: true, skipped: true });
+        return true;
+      }
+      injectConsoleFormatterIntoTab(sender.tab.id)
+        .then(() => sendResponse({ ok: true }))
+        .catch((e: Error) => sendResponse({ __error: e.message }));
+      return true;
+    }
+
+    if (message.type === CONSOLE_FORMATTER_DEACTIVATE_MESSAGE && sender.tab?.id) {
+      const senderUrl = getSenderSalesforcePageUrl(sender);
+      if (!senderUrl || !isConsoleFormatterSupportedHost(senderUrl.hostname)) {
+        sendResponse({ ok: true, skipped: true });
+        return true;
+      }
+      teardownConsoleFormatterInTab(sender.tab.id)
+        .then(() => sendResponse({ ok: true }))
+        .catch((e: Error) => sendResponse({ __error: e.message }));
+      return true;
+    }
+
+    if (message.type !== 'updateBadge' || !sender.tab?.id) {
       return;
     }
 

@@ -1,6 +1,6 @@
 # SF Boost — Privacy Policy
 
-**Last updated: March 14, 2026**
+**Last updated: March 26, 2026**
 
 SF Boost ("the extension") is a Chrome browser extension for Salesforce administrators and developers. Its sole purpose is to improve day-to-day productivity within the native Salesforce user interface. The extension runs entirely inside the user's browser and communicates only with the Salesforce org the user already has open.
 
@@ -29,7 +29,9 @@ The extension reads the Salesforce `sid` session cookie **locally** using the Ch
 
 ### 2.2 Salesforce Page Content and DOM
 
-The extension's content script runs on Salesforce pages (`*.salesforce.com`, `*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`) to add UI enhancements: field labels, table filters, environment indicators, keyboard shortcuts, copy buttons, and setup helpers. No page content is transmitted outside the browser.
+The extension's content script runs on Salesforce pages (`*.salesforce.com`, `*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`) to add UI enhancements such as field labels, table filters, environment indicators, keyboard shortcuts, copy buttons, setup bulk-selection helpers, and other setup-page UI tools. No page content is transmitted outside the browser.
+
+When the optional **Console Formatter** module is enabled, the extension also injects a tiny local bootstrap script into the page's main JavaScript world on authenticated org hosts (`*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`) so console snapshots can be formatted before the page's application code logs values. This bootstrap never sends data off-device and is not injected on public Salesforce properties such as `help.salesforce.com`.
 
 ### 2.3 Salesforce REST and Tooling API Responses
 
@@ -75,8 +77,11 @@ Salesforce object metadata (field names, types, labels) fetched by the Field Ins
 |---|---|
 | `storage` | Save and sync the user's enabled-module preferences and per-org settings via `chrome.storage.sync`; cache object metadata via `chrome.storage.local`. |
 | `cookies` | Read the `sid` session cookie locally so the extension can authenticate Salesforce API requests on the user's behalf without requiring a separate login. |
-| Host: `*://*.salesforce.com/*` | Required to inject the content script and make API calls to standard Salesforce production orgs. |
-| Host: `*://*.my.salesforce.com/*` | Required to support Salesforce My Domain orgs (the standard for Enterprise and Unlimited editions). |
+| `scripting` | Runtime-register or inject local extension scripts only inside supported Salesforce tabs, including the optional Console Formatter bootstrap and a keyboard-shortcut fallback path. |
+| Host: `*://*.salesforce.com/*` | Required to support classic Salesforce pod hosts and Salesforce API endpoints used by authenticated org pages. |
+| Host: `*://*.my.salesforce.com/*` | Required to support Salesforce My Domain orgs and API calls for the active org. |
+| Host: `*://*.lightning.force.com/*` | Required so the content script can run on Lightning Experience pages. |
+| Host: `*://*.salesforce-setup.com/*` | Required so the content script can run on Lightning Setup shell pages. |
 
 No other permissions are requested. The extension does not request `<all_urls>`, `tabs`, `history`, `bookmarks`, `downloads`, `identity`, or any broad host permission.
 

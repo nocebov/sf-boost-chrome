@@ -6,11 +6,14 @@ const DATA_ATTR = 'data-sfboost-table-filter';
 const CONTAINER_CLASS = 'sfboost-table-filter';
 const HIGHLIGHT_CLASS = 'sfboost-tf-highlight';
 const NO_MATCH_CLASS = 'sfboost-tf-no-match';
-const AUTO_HYDRATE_MAX_ROWS = 200;
+const MASK_CLASS = 'sfboost-tf-hydration-mask';
+const AUTO_HYDRATE_MAX_ROWS = 2000;
 const OBJECT_MANAGER_FIELDS_PATTERN = /\/lightning\/setup\/ObjectManager\/\w+\/FieldsAndRelationships\/view/i;
 const HYDRATE_STEP_DELAY_MS = 120;
-const HYDRATE_MAX_STEPS = 60;
+const HYDRATE_MAX_STEPS = 120;
 const SCROLLABLE_OVERFLOWS = new Set(['auto', 'overlay', 'scroll']);
+const PROGRESSIVE_REFILTER_INTERVAL_MS = 200;
+const WARMUP_DELAY_MS = 500;
 
 let observer: MutationObserver | null = null;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
@@ -26,12 +29,19 @@ interface DetectedTable {
   table: HTMLTableElement;
 }
 
+interface HydrationState {
+  promise: Promise<void>;
+  onNewRows: Set<() => void>;
+  completed: boolean;
+}
+
 interface TableState {
   activeQuery: string;
   clearBtn: HTMLButtonElement;
   countEl: HTMLSpanElement;
   inputEl: HTMLInputElement;
-  preloadPromise: Promise<void> | null;
+  progressBar: HTMLDivElement;
+  hydration: HydrationState | null;
   requestSeq: number;
   rowsHydrated: boolean;
 }
@@ -109,6 +119,63 @@ function getScrollableAncestor(table: HTMLTableElement, allowViewportFallback: b
   return null;
 }
 
+// --- Hydration Mask ---
+
+function createHydrationMask(scrollContainer: HTMLElement): HTMLDivElement {
+  const rect = scrollContainer.getBoundingClientRect();
+  const mask = document.createElement('div');
+  mask.className = MASK_CLASS;
+  mask.setAttribute('style', `
+    position: fixed;
+    top: ${rect.top}px;
+    left: ${rect.left}px;
+    width: ${rect.width}px;
+    height: ${rect.height}px;
+    background: ${tokens.color.surfaceBase};
+    z-index: ${tokens.zIndex.overlay};
+    pointer-events: none;
+    overflow: hidden;
+  `);
+
+  // Thin animated progress line at the top of mask
+  const bar = document.createElement('div');
+  bar.setAttribute('style', `
+    position: absolute;
+    top: 0; left: 0;
+    height: 2px;
+    background: ${tokens.color.primary};
+    border-radius: ${tokens.radius.xs};
+    width: 10%;
+    animation: sfboost-tf-mask-shimmer 1.2s ease-in-out infinite;
+  `);
+  mask.appendChild(bar);
+
+  // Inject keyframes if not present
+  if (!document.getElementById('sfboost-tf-mask-keyframes')) {
+    const style = document.createElement('style');
+    style.id = 'sfboost-tf-mask-keyframes';
+    style.textContent = `
+      @keyframes sfboost-tf-mask-shimmer {
+        0% { width: 10%; margin-left: 0; }
+        50% { width: 40%; margin-left: 30%; }
+        100% { width: 10%; margin-left: 90%; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(mask);
+  return mask;
+}
+
+function updateMaskPosition(mask: HTMLDivElement, scrollContainer: HTMLElement): void {
+  const rect = scrollContainer.getBoundingClientRect();
+  mask.style.top = `${rect.top}px`;
+  mask.style.left = `${rect.left}px`;
+  mask.style.width = `${rect.width}px`;
+  mask.style.height = `${rect.height}px`;
+}
+
 // --- Search UI Creation ---
 
 function createSearchIcon(): SVGSVGElement {
@@ -140,6 +207,21 @@ function createSearchIcon(): SVGSVGElement {
   return svg;
 }
 
+function createProgressBar(): HTMLDivElement {
+  const bar = document.createElement('div');
+  bar.setAttribute('style', `
+    position: absolute;
+    bottom: 0; left: 0;
+    height: 2px;
+    background: ${tokens.color.primary};
+    border-radius: ${tokens.radius.xs};
+    transition: width ${tokens.transition.normal}, opacity ${tokens.transition.normal};
+    width: 0%;
+    opacity: 0;
+  `);
+  return bar;
+}
+
 function createFilterUI(table: HTMLTableElement): FilterUIResult {
   const container = document.createElement('div');
   container.className = CONTAINER_CLASS;
@@ -154,6 +236,8 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
     border-radius: ${tokens.radius.sm};
     font-family: ${tokens.font.family.sans};
     box-shadow: ${tokens.shadow.xs};
+    position: relative;
+    overflow: hidden;
   `);
 
   container.appendChild(createSearchIcon());
@@ -203,12 +287,15 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
   clearBtn.addEventListener('mouseenter', () => { clearBtn.style.color = tokens.color.textPrimary; });
   clearBtn.addEventListener('mouseleave', () => { clearBtn.style.color = tokens.color.textSalesforceGray; });
 
+  const progressBar = createProgressBar();
+
   const state: TableState = {
     activeQuery: '',
     clearBtn,
     countEl: count,
     inputEl: input,
-    preloadPromise: null,
+    progressBar,
+    hydration: null,
     requestSeq: 0,
     rowsHydrated: false,
   };
@@ -247,7 +334,7 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
   container.appendChild(count);
   container.appendChild(clearBtn);
 
-  // "Load All" button for lazy-loaded tables (e.g., Object Manager fields)
+  // "Load All" button only for very large tables (>2000 rows)
   if (isLightningGridTable(table)) {
     const expected = getExpectedRowCount(table);
     const loaded = getBodyRows(table).length;
@@ -282,7 +369,7 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
         loadAllBtn.style.cursor = 'default';
         loadAllBtn.textContent = 'Loading...';
 
-        void ensureRowsLoaded(table, state, true).then(() => {
+        void startHydration(table, state, true).then(() => {
           const liveState = tableStates.get(table);
           if (liveState !== state || !table.isConnected) return;
           loadAllBtn.textContent = 'All loaded';
@@ -299,6 +386,7 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
     }
   }
 
+  container.appendChild(progressBar);
   updateCount(table, count, '');
 
   return { container, state };
@@ -362,14 +450,6 @@ function shouldHydrateRows(table: HTMLTableElement, state: TableState): boolean 
   if (expected != null) return loaded < expected;
 
   return !state.rowsHydrated;
-}
-
-function updateLoadingCount(table: HTMLTableElement, countEl: HTMLElement): void {
-  const loaded = getBodyRows(table).length;
-  const expected = getExpectedRowCount(table);
-  countEl.textContent = expected != null
-    ? `Loading ${loaded} / ${expected}...`
-    : `Loading ${loaded} rows...`;
 }
 
 function clearHighlights(table: HTMLTableElement): void {
@@ -467,84 +547,155 @@ function applyFilterToLoadedRows(table: HTMLTableElement, query: string, countEl
   }
 
   if (terms.length > 0 && visible === 0) {
-    showNoMatchMessage(table);
+    const state = tableStates.get(table);
+    // Only show "no matches" if hydration is done or not needed
+    if (!state?.hydration || state.hydration.completed) {
+      showNoMatchMessage(table);
+    }
   }
 
   highlightMatches(table, terms);
   updateCount(table, countEl, trimmed);
 }
 
-async function hydrateRows(
+// --- Silent Hydration ---
+
+async function hydrateRowsSilently(
   table: HTMLTableElement,
   allowViewportFallback: boolean,
   expectedAtStart: number | null,
   tokenAtStart: number,
+  onProgress?: (loaded: number, expected: number | null) => void,
 ): Promise<boolean> {
   const scrollContainer = getScrollableAncestor(table, allowViewportFallback);
   if (!scrollContainer) return false;
 
   const originalScrollTop = scrollContainer.scrollTop;
+  const needsMask = getBodyRows(table).length < (expectedAtStart ?? Infinity);
+
+  // Create visual mask to hide scroll jumps
+  let mask: HTMLDivElement | null = null;
+  let rafId: number | null = null;
+
+  if (needsMask) {
+    mask = createHydrationMask(scrollContainer);
+
+    // Keep mask position in sync during hydration
+    const updateMask = () => {
+      if (mask && mask.isConnected && scrollContainer.isConnected) {
+        updateMaskPosition(mask, scrollContainer);
+        rafId = requestAnimationFrame(updateMask);
+      }
+    };
+    rafId = requestAnimationFrame(updateMask);
+  }
+
   let lastCount = getBodyRows(table).length;
   let stableBottomPasses = 0;
   let didScroll = false;
 
-  for (let step = 0; step < HYDRATE_MAX_STEPS; step++) {
-    if (tokenAtStart !== lifecycleToken || !table.isConnected) return didScroll;
+  try {
+    for (let step = 0; step < HYDRATE_MAX_STEPS; step++) {
+      if (tokenAtStart !== lifecycleToken || !table.isConnected) return didScroll;
 
-    const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
-    if (maxScrollTop <= 0) break;
+      const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+      if (maxScrollTop <= 0) break;
 
-    const nextTop = Math.min(
-      scrollContainer.scrollTop + Math.max(Math.floor(scrollContainer.clientHeight * 0.9), 240),
-      maxScrollTop,
-    );
+      const nextTop = Math.min(
+        scrollContainer.scrollTop + Math.max(Math.floor(scrollContainer.clientHeight * 0.9), 240),
+        maxScrollTop,
+      );
 
-    if (nextTop > scrollContainer.scrollTop + 1) {
-      scrollContainer.scrollTop = nextTop;
-      didScroll = true;
+      if (nextTop > scrollContainer.scrollTop + 1) {
+        scrollContainer.scrollTop = nextTop;
+        didScroll = true;
+      }
+
+      await wait(HYDRATE_STEP_DELAY_MS);
+
+      const currentCount = getBodyRows(table).length;
+      const expected = getExpectedRowCount(table) ?? expectedAtStart;
+      if (expected != null && currentCount >= expected) {
+        if (currentCount > lastCount) {
+          onProgress?.(currentCount, expected);
+        }
+        break;
+      }
+
+      const reachedBottom = scrollContainer.scrollTop >= maxScrollTop - 2;
+      if (currentCount > lastCount) {
+        lastCount = currentCount;
+        stableBottomPasses = 0;
+        onProgress?.(currentCount, expected);
+        continue;
+      }
+
+      stableBottomPasses = reachedBottom ? stableBottomPasses + 1 : 0;
+      if (reachedBottom && stableBottomPasses >= 2) break;
     }
-
-    await wait(HYDRATE_STEP_DELAY_MS);
-
-    const currentCount = getBodyRows(table).length;
-    const expected = getExpectedRowCount(table) ?? expectedAtStart;
-    if (expected != null && currentCount >= expected) break;
-
-    const reachedBottom = scrollContainer.scrollTop >= maxScrollTop - 2;
-    if (currentCount > lastCount) {
-      lastCount = currentCount;
-      stableBottomPasses = 0;
-      continue;
+  } finally {
+    // Always restore scroll position and clean up mask
+    if (didScroll && tokenAtStart === lifecycleToken && scrollContainer.isConnected) {
+      scrollContainer.scrollTop = originalScrollTop;
+      await wait(0);
     }
-
-    stableBottomPasses = reachedBottom ? stableBottomPasses + 1 : 0;
-    if (reachedBottom && stableBottomPasses >= 2) break;
-  }
-
-  if (didScroll && tokenAtStart === lifecycleToken && scrollContainer.isConnected) {
-    scrollContainer.scrollTop = originalScrollTop;
-    await wait(0);
+    if (rafId != null) cancelAnimationFrame(rafId);
+    if (mask) mask.remove();
   }
 
   return didScroll;
 }
 
-async function ensureRowsLoaded(
+function startHydration(
   table: HTMLTableElement,
   state: TableState,
   allowViewportFallback: boolean,
 ): Promise<void> {
-  if (!shouldHydrateRows(table, state)) return;
+  if (!shouldHydrateRows(table, state)) return Promise.resolve();
 
-  if (state.preloadPromise) {
-    await state.preloadPromise;
-    return;
+  // Reuse existing hydration
+  if (state.hydration && !state.hydration.completed) {
+    return state.hydration.promise;
   }
 
   const tokenAtStart = lifecycleToken;
   const expectedAtStart = getExpectedRowCount(table);
-  state.preloadPromise = (async () => {
-    const didScroll = await hydrateRows(table, allowViewportFallback, expectedAtStart, tokenAtStart);
+
+  const onNewRows = new Set<() => void>();
+
+  const hydrationState: HydrationState = {
+    promise: Promise.resolve(), // will be replaced
+    onNewRows,
+    completed: false,
+  };
+  state.hydration = hydrationState;
+
+  // Show progress bar
+  updateProgressBar(state.progressBar, 0, expectedAtStart);
+  state.progressBar.style.opacity = '1';
+
+  const onProgress = (loaded: number, expected: number | null) => {
+    if (tokenAtStart !== lifecycleToken || !table.isConnected) return;
+
+    // Invalidate text cache for new rows (they weren't in cache anyway)
+    // Update progress bar
+    updateProgressBar(state.progressBar, loaded, expected);
+
+    // Update count display
+    if (state.activeQuery.trim()) {
+      updateCount(table, state.countEl, state.activeQuery.trim().toLowerCase());
+    } else {
+      updateCount(table, state.countEl, '');
+    }
+
+    // Notify all listeners (progressive re-filter)
+    for (const cb of onNewRows) {
+      cb();
+    }
+  };
+
+  const promise = (async () => {
+    const didScroll = await hydrateRowsSilently(table, allowViewportFallback, expectedAtStart, tokenAtStart, onProgress);
     if (tokenAtStart !== lifecycleToken || !table.isConnected) return;
 
     const expected = getExpectedRowCount(table);
@@ -554,15 +705,45 @@ async function ensureRowsLoaded(
     } else if (didScroll) {
       state.rowsHydrated = true;
     }
+
+    hydrationState.completed = true;
+
+    // Final progress update
+    updateProgressBar(state.progressBar, loaded, expected);
+
+    // Fade out progress bar
+    setTimeout(() => {
+      if (tableStates.get(table) === state) {
+        state.progressBar.style.opacity = '0';
+      }
+    }, 600);
+
+    // Notify listeners one last time
+    for (const cb of onNewRows) {
+      cb();
+    }
+    onNewRows.clear();
   })().finally(() => {
     const liveState = tableStates.get(table);
-    if (liveState === state) {
-      liveState.preloadPromise = null;
+    if (liveState === state && liveState.hydration === hydrationState) {
+      hydrationState.completed = true;
     }
   });
 
-  await state.preloadPromise;
+  hydrationState.promise = promise;
+  return promise;
 }
+
+function updateProgressBar(bar: HTMLDivElement, loaded: number, expected: number | null): void {
+  if (expected != null && expected > 0) {
+    const pct = Math.min(100, Math.round((loaded / expected) * 100));
+    bar.style.width = `${pct}%`;
+  } else {
+    bar.style.width = '50%';
+  }
+}
+
+// --- Progressive Filtering ---
 
 async function runFilter(table: HTMLTableElement, query: string): Promise<void> {
   const state = tableStates.get(table);
@@ -574,31 +755,61 @@ async function runFilter(table: HTMLTableElement, query: string): Promise<void> 
   const trimmed = query.trim();
   state.clearBtn.style.display = trimmed ? 'block' : 'none';
 
-  if (trimmed && shouldHydrateRows(table, state)) {
-    updateLoadingCount(table, state.countEl);
-    await ensureRowsLoaded(table, state, true);
-  }
-
-  if (!table.isConnected) return;
-  const liveState = tableStates.get(table);
-  if (liveState !== state || state.requestSeq !== requestSeq) return;
-
+  // 1. Immediately filter whatever rows are loaded right now
   applyFilterToLoadedRows(table, query, state.countEl);
+
+  // 2. If rows need loading, start hydration (no-op if already running) and register progressive callback
+  if (trimmed && shouldHydrateRows(table, state)) {
+    // Ensure hydration is running
+    void startHydration(table, state, true);
+
+    // Register progressive re-filter callback
+    if (state.hydration && !state.hydration.completed) {
+      let lastRefilterTime = Date.now();
+
+      const progressiveRefilter = () => {
+        if (state.requestSeq !== requestSeq || !table.isConnected) {
+          // This query is stale — unregister
+          state.hydration?.onNewRows.delete(progressiveRefilter);
+          return;
+        }
+
+        // Throttle re-filtering
+        const now = Date.now();
+        if (now - lastRefilterTime < PROGRESSIVE_REFILTER_INTERVAL_MS) return;
+        lastRefilterTime = now;
+
+        applyFilterToLoadedRows(table, query, state.countEl);
+      };
+
+      state.hydration.onNewRows.add(progressiveRefilter);
+    }
+  }
 }
 
 function updateCount(table: HTMLTableElement, countEl: HTMLElement, query: string): void {
   const rows = getBodyRows(table);
   const loaded = rows.length;
   const expected = getExpectedRowCount(table);
+  const state = tableStates.get(table);
+  const isHydrating = state?.hydration && !state.hydration.completed;
   const partiallyLoaded = expected != null && loaded < expected;
 
   if (!query) {
-    countEl.textContent = partiallyLoaded ? `${loaded} / ${expected} loaded` : `${loaded} rows`;
+    if (isHydrating && expected != null) {
+      countEl.textContent = `Loading ${loaded} / ${expected}...`;
+    } else {
+      countEl.textContent = partiallyLoaded ? `${loaded} / ${expected} loaded` : `${loaded} rows`;
+    }
     return;
   }
 
   const visible = rows.filter(row => row.style.display !== 'none').length;
-  countEl.textContent = partiallyLoaded ? `${visible} / ${loaded} loaded` : `${visible} / ${loaded}`;
+  if (isHydrating && expected != null) {
+    countEl.textContent = `${visible} matches (loading ${loaded}/${expected}...)`;
+  } else {
+    countEl.textContent = partiallyLoaded ? `${visible} / ${loaded} loaded` : `${visible} / ${loaded}`;
+  }
 }
 
 function isObjectManagerFieldsPage(): boolean {
@@ -607,31 +818,38 @@ function isObjectManagerFieldsPage(): boolean {
 
 function maybeWarmupTable(table: HTMLTableElement): void {
   const state = tableStates.get(table);
-  if (!state || state.preloadPromise || state.activeQuery.trim()) return;
+  if (!state || state.activeQuery.trim()) return;
+  if (state.hydration && !state.hydration.completed) return; // already hydrating
   if (!isLightningGridTable(table)) return;
 
   const expected = getExpectedRowCount(table);
-  // On Object Manager fields pages, auto-hydrate up to 500 rows
-  const autoHydrateLimit = isObjectManagerFieldsPage() ? 500 : AUTO_HYDRATE_MAX_ROWS;
-  if (expected == null || expected > autoHydrateLimit) return;
-  if (getBodyRows(table).length >= expected) {
+  // Auto-hydrate tables up to AUTO_HYDRATE_MAX_ROWS (2000)
+  if (expected != null && expected > AUTO_HYDRATE_MAX_ROWS) return;
+  if (expected != null && getBodyRows(table).length >= expected) {
     state.rowsHydrated = true;
     return;
   }
 
   if (!getScrollableAncestor(table, false)) return;
 
-  void ensureRowsLoaded(table, state, false).then(() => {
+  // Delay warmup slightly to let Salesforce finish initial rendering
+  setTimeout(() => {
     const liveState = tableStates.get(table);
     if (liveState !== state || !table.isConnected) return;
+    if (state.hydration && !state.hydration.completed) return;
 
-    if (state.activeQuery.trim()) {
-      void runFilter(table, state.activeQuery);
-      return;
-    }
+    void startHydration(table, state, false).then(() => {
+      const ls = tableStates.get(table);
+      if (ls !== state || !table.isConnected) return;
 
-    updateCount(table, state.countEl, '');
-  });
+      if (state.activeQuery.trim()) {
+        void runFilter(table, state.activeQuery);
+        return;
+      }
+
+      updateCount(table, state.countEl, '');
+    });
+  }, WARMUP_DELAY_MS);
 }
 
 function refreshManagedTables(): void {
@@ -639,9 +857,11 @@ function refreshManagedTables(): void {
     const state = tableStates.get(table);
     if (!state) return;
 
-    if (state.preloadPromise) {
+    const isHydrating = state.hydration && !state.hydration.completed;
+
+    if (isHydrating) {
       if (state.activeQuery.trim()) {
-        updateLoadingCount(table, state.countEl);
+        applyFilterToLoadedRows(table, state.activeQuery, state.countEl);
       } else {
         updateCount(table, state.countEl, '');
       }
@@ -729,8 +949,27 @@ function scanAndInject(): void {
 
 function startObserver(): void {
   if (observer) observer.disconnect();
-  observer = new MutationObserver(() => {
-    rowTextCache = new WeakMap();
+  observer = new MutationObserver((mutations) => {
+    // Targeted cache invalidation — only invalidate rows affected by mutations
+    for (const mutation of mutations) {
+      const target = mutation.target;
+      if (target instanceof HTMLElement) {
+        const row = target.closest('tr');
+        if (row instanceof HTMLTableRowElement) {
+          rowTextCache.delete(row);
+        }
+      }
+      // Also invalidate for added/removed nodes
+      for (const node of mutation.addedNodes) {
+        if (node instanceof HTMLElement) {
+          const row = node.closest('tr');
+          if (row instanceof HTMLTableRowElement) {
+            rowTextCache.delete(row);
+          }
+        }
+      }
+    }
+
     if (!scanTimer) {
       scanTimer = setTimeout(() => {
         scanTimer = null;
@@ -762,6 +1001,9 @@ function removeAllFilters(): void {
 
   rowTextCache = new WeakMap();
   tableStates = new WeakMap();
+
+  // Remove hydration masks
+  document.querySelectorAll(`.${MASK_CLASS}`).forEach(el => el.remove());
 
   document.querySelectorAll(`.${CONTAINER_CLASS}`).forEach(el => el.remove());
   document.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {

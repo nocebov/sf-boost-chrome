@@ -210,18 +210,34 @@ function injectButton(): boolean {
   const candidate = parseDependencyComponentCandidate(window.location.pathname, window.location.search);
   if (!candidate) return false;
 
-  const headerSelectors = [
-    '.slds-page-header__title',
-    '.slds-page-header__detail-block',
-    'h1.slds-page-header__title',
-    '.test-id__field-header',
-    '.entityNameTitle',
-    '.pageDescription',
-    // Classic-style setup pages (salesforce-setup.com iframes)
-    '.pbTitle',
-    '.bPageTitle',
-    '.brandTertiaryBgr h2',
-  ];
+  const isFlowBuilder = window.location.pathname.includes('/builder_platform_interaction/');
+
+  const headerSelectors = isFlowBuilder
+    ? [
+        // Flow Builder toolbar
+        '.toolbar .right',
+        '.toolbar',
+        '[class*="toolbarActions"]',
+        '[class*="toolbar"] [class*="right"]',
+        '[class*="toolbar"]',
+        'header',
+      ]
+    : [
+        // Standard Lightning page header title
+        '.slds-page-header__title',
+        '.slds-page-header__detail-block',
+        'h1.slds-page-header__title',
+        '.test-id__field-header',
+        '.entityNameTitle',
+        '.pageDescription',
+        // Classic-style setup pages (salesforce-setup.com iframes)
+        '.pbTitle',
+        '.bPageTitle',
+        '.brandTertiaryBgr h2',
+        // Lightning setup breadcrumb header (Object Manager pages)
+        '.onesetupBreadcrumbs h1',
+        'h1',
+      ];
 
   const header = findNodeInDocumentOrIframes(headerSelectors);
 
@@ -234,13 +250,27 @@ function injectButton(): boolean {
   if (header?.parentElement) {
     btn.style.marginLeft = tokens.space.md;
     btn.style.verticalAlign = 'middle';
-    header.parentElement.insertBefore(btn, header.nextSibling);
+
+    if (isFlowBuilder) {
+      // In Flow Builder: prepend to the toolbar so button appears on the left side of existing actions
+      header.insertBefore(btn, header.firstChild);
+    } else {
+      // Make parent flex so button appears inline with the title
+      if (header.tagName === 'H1' || header.tagName === 'H2') {
+        Object.assign(header.parentElement.style, {
+          display: 'flex',
+          alignItems: 'center',
+          gap: tokens.space.md,
+        });
+      }
+      header.parentElement.insertBefore(btn, header.nextSibling);
+    }
   } else {
-    // FAB fallback when no header element is found
+    // Top-right fallback near the page header area (instead of bottom-right FAB)
     Object.assign(btn.style, {
       position: 'fixed',
-      bottom: '20px',
-      right: '20px',
+      top: '100px',
+      right: '24px',
       zIndex: tokens.zIndex.fab,
       borderRadius: tokens.radius.pill,
       boxShadow: tokens.shadow.md,

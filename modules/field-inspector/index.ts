@@ -708,22 +708,30 @@ function createFieldBadge(fieldInfo: FieldInfo, kind: 'record' | 'list'): HTMLBu
   badge.title = `Type: ${fieldInfo.type}${fieldInfo.required ? ' • Required' : ''}${fieldInfo.relationshipName ? ` • ${fieldInfo.relationshipName}` : ''}\nClick for details • Ctrl/Cmd+Click to copy`;
   badge.setAttribute('aria-haspopup', 'dialog');
   badge.setAttribute('aria-expanded', 'false');
+
+  const isList = kind === 'list';
   badge.setAttribute('style', `
     display: inline-flex;
     align-items: center;
     gap: ${tokens.space.xs};
-    margin-left: ${tokens.space.sm};
-    padding: 1px ${tokens.space.sm};
+    ${isList ? '' : `margin-left: ${tokens.space.sm};`}
+    padding: ${isList ? '0px 4px' : `1px ${tokens.space.sm}`};
     background: ${tokens.color.primaryLight};
     color: ${tokens.color.primary};
-    font-size: ${tokens.font.size.xs};
+    font-size: ${isList ? '9px' : tokens.font.size.xs};
     font-weight: ${tokens.font.weight.semibold};
     border-radius: ${tokens.radius.sm};
     font-family: ${tokens.font.family.mono};
     cursor: pointer;
     vertical-align: middle;
     border: 1px solid ${tokens.color.primaryBorder};
-    line-height: 1.4;
+    line-height: ${isList ? '1.3' : '1.4'};
+    ${isList ? `
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    ` : ''}
   `);
 
   badge.addEventListener('mouseenter', () => {
@@ -757,18 +765,35 @@ function createFieldBadge(fieldInfo: FieldInfo, kind: 'record' | 'list'): HTMLBu
   return badge;
 }
 
+const LIST_BADGE_CONTAINER_CLASS = 'sfboost-list-badge-row';
+
 function findListBadgeMount(header: HTMLElement): HTMLElement {
-  const contentTarget = header.querySelector<HTMLElement>('a, .slds-truncate, span[title], div[title]');
-  if (contentTarget) {
-    return contentTarget.matches('a') ? (contentTarget.parentElement ?? header) : contentTarget;
+  // Check if we already created a badge container for this header
+  const existing = header.querySelector<HTMLElement>(`.${LIST_BADGE_CONTAINER_CLASS}`);
+  if (existing) return existing;
+
+  // Make the <th> a positioning anchor
+  const computed = getComputedStyle(header);
+  if (computed.position === 'static') {
+    header.style.position = 'relative';
   }
 
-  const button = header.querySelector<HTMLElement>('button');
-  if (button?.parentElement) {
-    return button.parentElement;
-  }
+  // Create an absolutely-positioned container pinned to the bottom of the <th>
+  const container = document.createElement('div');
+  container.className = LIST_BADGE_CONTAINER_CLASS;
+  container.setAttribute('style', `
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
+    pointer-events: auto;
+    line-height: 1;
+    max-width: calc(100% - 8px);
+  `);
 
-  return header;
+  header.appendChild(container);
+  return container;
 }
 
 function applyRecordBadges(fieldIndex: FieldIndex): void {
@@ -847,6 +872,14 @@ function stopObserver(): void {
 
 function removeFieldBadges(): void {
   closePopover();
+  // Remove list badge containers and restore <th> position
+  document.querySelectorAll(`.${LIST_BADGE_CONTAINER_CLASS}`).forEach((container) => {
+    const header = container.parentElement;
+    container.remove();
+    if (header?.tagName === 'TH') {
+      header.style.position = '';
+    }
+  });
   document.querySelectorAll(`.${BADGE_CLASS}`).forEach((element) => element.remove());
 }
 

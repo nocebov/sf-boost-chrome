@@ -88,6 +88,14 @@ export function parseDependencyComponentCandidate(
     return { componentType: 'Flow', componentId: flowBuilderMatch[1] };
   }
 
+  // Flow Builder with flowId as query param: /builder_platform_interaction/flowBuilder.app?flowId=...
+  if (pathname.includes('/builder_platform_interaction/')) {
+    const flowId = new URLSearchParams(search).get('flowId');
+    if (flowId && /^[a-zA-Z0-9]{15,18}$/.test(flowId)) {
+      return { componentType: 'Flow', componentId: flowId };
+    }
+  }
+
   if (pathname.includes('/lightning/setup/LightningComponentBundles/')) {
     const lwcId = extractSalesforceIdFromAddress(new URLSearchParams(search).get('address'));
     if (lwcId) return { componentType: 'LightningComponentBundle', componentId: lwcId };

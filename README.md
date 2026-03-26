@@ -3,7 +3,7 @@
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-SF_Boost-4285F4?logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/sf-boost/eiboagfkpffiagbjljpkkpehidoihegh)
 [![CI](https://github.com/nocebov/sf-boost-chrome/actions/workflows/ci.yml/badge.svg)](https://github.com/nocebov/sf-boost-chrome/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](CHANGELOG.md)
 
 **SF Boost** is a Chrome Extension focused on one job: making everyday Salesforce admin and developer work faster inside the native UI.
 
@@ -117,6 +117,16 @@ On Outbound/Inbound Change Set pages, a search bar is injected above the compone
 
 ---
 
+### Bulk Check
+
+Adds an inline master checkbox with a live `checked / total` counter on Setup permission tables.
+
+Works on Profile, Permission Set, and similar edit pages, including classic Setup iframes embedded inside Lightning Setup and direct classic pod-host pages. Clicking the pill toggles the whole column while still dispatching native checkbox events so Salesforce reacts as if you clicked each checkbox manually.
+
+> Disabled by default — enable in the extension popup when you need bulk permission editing.
+
+---
+
 ### Hide DevOps Bar
 
 Removes the DevOps Center navigation bar from all Salesforce pages if you don't use it.
@@ -124,6 +134,16 @@ Removes the DevOps Center navigation bar from all Salesforce pages if you don't 
 > Disabled by default — enable in the extension popup when you explicitly want it.
 
 Once enabled, the bar is hidden via CSS injection and stays hidden across SPA navigations. A MutationObserver catches dynamically added DevOps bar elements.
+
+---
+
+### Console Formatter
+
+Readable snapshots for LWC/LWS console output when native DevTools formatting is unavailable or incomplete.
+
+When enabled, SF Boost installs an early `document_start` formatter only on authenticated Salesforce org hosts (`*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`). It snapshots proxy-heavy values into plain expandable arrays/objects and also exposes `window.SFBoostConsole.snapshot()`, `.log()`, and `.dir()` helpers for explicit use.
+
+> Disabled by default — enable in the extension popup only when you want the console formatting helpers.
 
 ---
 

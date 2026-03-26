@@ -3,90 +3,144 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import { tokens } from '../../lib/design-tokens';
 
 const DATA_ATTR = 'data-sfboost-bulk-check';
-const BTN_CLASS = 'sfboost-bulk-check-btn';
+const MASTER_CLASS = 'sfboost-bulk-master';
+const COUNTER_CLASS = 'sfboost-bulk-counter';
+const WRAP_CLASS = 'sfboost-bulk-check-wrap';
 
 let observer: MutationObserver | null = null;
+let observerDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let initTimer: ReturnType<typeof setTimeout> | null = null;
-let lifecycleToken = 0;
-
-/**
- * Profile and Permission Set edit pages in Salesforce Setup contain tables
- * with checkbox columns for permissions (Read, Create, Edit, Delete, etc.).
- *
- * In Lightning Setup, these are rendered inside a same-origin Classic iframe.
- * The content script skips iframes (window.top !== window.self), so we access
- * iframe content from the main frame via iframe.contentDocument.
- */
+const controlCleanups = new Set<() => void>();
+const iframeLoadCleanups = new Set<() => void>();
+const pendingScanTimers = new Set<ReturnType<typeof setTimeout>>();
 
 function isSetupPage(ctx: ModuleContext): boolean {
   return ctx.pageContext.pageType === 'setup';
 }
 
-function getSetupIframeDocuments(): Document[] {
-  const docs: Document[] = [document];
+function addManagedListener(
+  target: EventTarget,
+  type: string,
+  listener: EventListenerOrEventListenerObject,
+): () => void {
+  target.addEventListener(type, listener);
+  return () => target.removeEventListener(type, listener);
+}
 
-  // Look for Classic Setup iframes
+function registerControlCleanup(cleanup: () => void): void {
+  controlCleanups.add(cleanup);
+}
+
+function runControlCleanups(): void {
+  for (const cleanup of Array.from(controlCleanups)) {
+    controlCleanups.delete(cleanup);
+    try {
+      cleanup();
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
+}
+
+function clearIframeLoadCleanups(): void {
+  for (const cleanup of Array.from(iframeLoadCleanups)) {
+    iframeLoadCleanups.delete(cleanup);
+    try {
+      cleanup();
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }
+}
+
+function scheduleDeferredScan(delayMs = 500): void {
+  const timer = setTimeout(() => {
+    pendingScanTimers.delete(timer);
+    scanAndInject();
+  }, delayMs);
+  pendingScanTimers.add(timer);
+}
+
+function clearPendingScanTimers(): void {
+  for (const timer of pendingScanTimers) {
+    clearTimeout(timer);
+  }
+  pendingScanTimers.clear();
+}
+
+function getTargetDocuments(): Document[] {
+  const docs: Document[] = [document];
   const iframes = document.querySelectorAll<HTMLIFrameElement>(
     'iframe[src*="/setup/"], iframe[src*="/perm"], iframe[src*="/profiles/"], ' +
-    'iframe.setupcontent, iframe[name="setupFrame"], iframe[title*="Setup"]'
+    'iframe.setupcontent, iframe[name="setupFrame"], iframe[title*="Setup"]',
   );
 
   for (const iframe of iframes) {
     try {
       const doc = iframe.contentDocument;
-      if (doc && doc.body) {
-        docs.push(doc);
-      }
+      if (doc?.body && !docs.includes(doc)) docs.push(doc);
     } catch {
-      // Cross-origin — skip
+      // Cross-origin iframe: ignored in the top frame.
     }
   }
 
   return docs;
 }
 
+function getDirectRows(table: HTMLTableElement): HTMLTableRowElement[] {
+  const container = table.tBodies[0] ?? table;
+  return Array.from(container.children).filter(
+    (el): el is HTMLTableRowElement => el.tagName === 'TR',
+  );
+}
+
+function getDirectCells(row: HTMLTableRowElement): HTMLTableCellElement[] {
+  return Array.from(row.children).filter(
+    (el): el is HTMLTableCellElement => el.tagName === 'TD' || el.tagName === 'TH',
+  );
+}
+
 interface CheckboxColumn {
   table: HTMLTableElement;
-  colIndex: number;
-  headerCell: HTMLTableCellElement;
+  headerEl: HTMLElement;
   checkboxes: HTMLInputElement[];
 }
 
 function findCheckboxColumns(doc: Document): CheckboxColumn[] {
   const results: CheckboxColumn[] = [];
-  const tables = doc.querySelectorAll<HTMLTableElement>('table');
+  const allTables = doc.querySelectorAll<HTMLTableElement>('table');
 
-  for (const table of tables) {
+  for (const table of allTables) {
     if (table.hasAttribute(DATA_ATTR)) continue;
+    if (table.parentElement?.closest('table')) continue;
 
-    const headerRow = table.querySelector('tr');
-    if (!headerRow) continue;
+    const directRows = getDirectRows(table);
+    if (directRows.length < 3) continue;
 
-    const headerCells = Array.from(headerRow.querySelectorAll<HTMLTableCellElement>('th, td'));
-    const bodyRows = Array.from(table.querySelectorAll<HTMLTableRowElement>('tbody tr, tr')).slice(1);
+    const firstRow = directRows[0];
+    if (!firstRow) continue;
+    const firstRowCells = getDirectCells(firstRow);
 
-    if (bodyRows.length < 2) continue;
-
-    for (let colIdx = 0; colIdx < headerCells.length; colIdx++) {
-      const checkboxes: HTMLInputElement[] = [];
-
-      for (const row of bodyRows) {
-        const cells = row.querySelectorAll('td, th');
-        const cell = cells[colIdx];
-        if (!cell) continue;
-
-        const cb = cell.querySelector<HTMLInputElement>('input[type="checkbox"]');
-        if (cb) checkboxes.push(cb);
+    for (let col = 0; col < firstRowCells.length; col += 1) {
+      const cellsAtCol: HTMLTableCellElement[] = [];
+      for (const row of directRows) {
+        const cells = getDirectCells(row);
+        const cell = cells[col];
+        if (cell) cellsAtCol.push(cell);
       }
 
-      // Need at least 3 checkboxes in a column to add bulk controls
-      if (checkboxes.length >= 3) {
-        results.push({
-          table,
-          colIndex: colIdx,
-          headerCell: headerCells[colIdx]!,
-          checkboxes,
-        });
+      const nestedPairs: Array<{ cell: HTMLTableCellElement; nested: HTMLTableElement }> = [];
+      for (const cell of cellsAtCol) {
+        const nested = Array.from(cell.children).find(
+          (el): el is HTMLTableElement => el.tagName === 'TABLE',
+        );
+        if (nested) nestedPairs.push({ cell, nested });
+      }
+
+      if (nestedPairs.length >= 2) {
+        processNestedColumn(table, nestedPairs, cellsAtCol, results);
+      } else {
+        processSimpleColumn(table, cellsAtCol, results);
       }
     }
   }
@@ -94,154 +148,326 @@ function findCheckboxColumns(doc: Document): CheckboxColumn[] {
   return results;
 }
 
-function createBulkButton(
-  label: string,
-  title: string,
-  onClick: () => void,
-): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = BTN_CLASS;
-  btn.textContent = label;
-  btn.title = title;
-  btn.setAttribute('style', `
-    display: inline-block;
-    padding: 1px ${tokens.space.sm};
-    border: 1px solid ${tokens.color.borderInput};
-    border-radius: ${tokens.radius.xs};
-    background: ${tokens.color.surfaceBase};
-    color: ${tokens.color.primary};
-    font-size: ${tokens.font.size.xs};
-    font-family: ${tokens.font.family.sans};
-    cursor: pointer;
-    line-height: 1.4;
-    white-space: nowrap;
-    transition: background ${tokens.transition.fast}, border-color ${tokens.transition.fast};
-  `);
+function processNestedColumn(
+  outerTable: HTMLTableElement,
+  nestedPairs: Array<{ cell: HTMLTableCellElement; nested: HTMLTableElement }>,
+  cellsAtCol: HTMLTableCellElement[],
+  results: CheckboxColumn[],
+): void {
+  const firstPair = nestedPairs[0];
+  if (!firstPair) return;
 
-  btn.addEventListener('mouseenter', () => {
-    btn.style.background = tokens.color.surfaceSelected;
-    btn.style.borderColor = tokens.color.primaryBorder;
-  });
-  btn.addEventListener('mouseleave', () => {
-    btn.style.background = tokens.color.surfaceBase;
-    btn.style.borderColor = tokens.color.borderInput;
-  });
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onClick();
-  });
+  const firstNestedRow = firstPair.nested.querySelector('tr');
+  if (!(firstNestedRow instanceof HTMLTableRowElement)) return;
 
-  return btn;
-}
+  const innerHeaderCells = getDirectCells(firstNestedRow);
 
-function setCheckboxes(checkboxes: HTMLInputElement[], checked: boolean): void {
-  for (const cb of checkboxes) {
-    if (cb.disabled) continue;
-    if (cb.checked === checked) continue;
-    cb.checked = checked;
-    // Dispatch events so Salesforce's JS picks up the change
-    cb.dispatchEvent(new Event('change', { bubbles: true }));
-    cb.dispatchEvent(new Event('click', { bubbles: true }));
+  for (let innerCol = 0; innerCol < innerHeaderCells.length; innerCol += 1) {
+    const innerCell = innerHeaderCells[innerCol];
+    if (!innerCell) continue;
+
+    const isHeaderTh = innerCell.tagName === 'TH';
+    const startIdx = isHeaderTh ? 1 : 0;
+    const checkboxes: HTMLInputElement[] = [];
+
+    for (let index = startIdx; index < nestedPairs.length; index += 1) {
+      const pair = nestedPairs[index];
+      if (!pair) continue;
+
+      const row = pair.nested.querySelector('tr');
+      if (!(row instanceof HTMLTableRowElement)) continue;
+
+      const cells = getDirectCells(row);
+      const targetCell = cells[innerCol];
+      if (!targetCell) continue;
+
+      const checkbox = targetCell.querySelector<HTMLInputElement>(
+        `input[type="checkbox"]:not(.${MASTER_CLASS})`,
+      );
+      if (checkbox) checkboxes.push(checkbox);
+    }
+
+    if (checkboxes.length < 2) continue;
+
+    const firstOuterCell = cellsAtCol[0];
+    if (!firstOuterCell && !isHeaderTh) continue;
+
+    results.push({
+      table: outerTable,
+      headerEl: isHeaderTh ? innerCell : firstOuterCell!,
+      checkboxes,
+    });
   }
 }
 
-function injectBulkControls(column: CheckboxColumn): void {
-  const { headerCell, checkboxes } = column;
+function processSimpleColumn(
+  table: HTMLTableElement,
+  cellsAtCol: HTMLTableCellElement[],
+  results: CheckboxColumn[],
+): void {
+  if (cellsAtCol.length < 3) return;
 
-  // Check if already has controls
-  if (headerCell.querySelector(`.${BTN_CLASS}`)) return;
+  const headerCell = cellsAtCol[0];
+  if (!headerCell) return;
 
-  const wrap = document.createElement('div');
-  wrap.className = 'sfboost-bulk-check-wrap';
-  wrap.setAttribute('style', `
-    display: flex;
-    gap: 2px;
-    margin-top: 2px;
-    justify-content: center;
-  `);
+  const checkboxes: HTMLInputElement[] = [];
+  for (let index = 1; index < cellsAtCol.length; index += 1) {
+    const cell = cellsAtCol[index];
+    if (!cell) continue;
 
-  const checkAllBtn = createBulkButton(
-    '✓ All',
-    'Check all checkboxes in this column',
-    () => setCheckboxes(checkboxes, true),
+    const checkbox = cell.querySelector<HTMLInputElement>(
+      `input[type="checkbox"]:not(.${MASTER_CLASS})`,
+    );
+    if (checkbox) checkboxes.push(checkbox);
+  }
+
+  if (checkboxes.length < 2) return;
+
+  results.push({ table, headerEl: headerCell, checkboxes });
+}
+
+function countState(checkboxes: HTMLInputElement[]): { checked: number; total: number } {
+  let checked = 0;
+  let total = 0;
+
+  for (const checkbox of checkboxes) {
+    if (checkbox.disabled) continue;
+    total += 1;
+    if (checkbox.checked) checked += 1;
+  }
+
+  return { checked, total };
+}
+
+function syncMaster(
+  master: HTMLInputElement,
+  counter: HTMLSpanElement,
+  checkboxes: HTMLInputElement[],
+): void {
+  const { checked, total } = countState(checkboxes);
+
+  if (total === 0) {
+    master.checked = false;
+    master.indeterminate = false;
+    master.disabled = true;
+    counter.textContent = '';
+    return;
+  }
+
+  master.disabled = false;
+  if (checked === 0) {
+    master.checked = false;
+    master.indeterminate = false;
+  } else if (checked === total) {
+    master.checked = true;
+    master.indeterminate = false;
+  } else {
+    master.checked = false;
+    master.indeterminate = true;
+  }
+
+  counter.textContent = `${checked}/${total}`;
+
+  if (checked === total) {
+    counter.style.color = tokens.color.success;
+  } else if (checked === 0) {
+    counter.style.color = tokens.color.textMuted;
+  } else {
+    counter.style.color = tokens.color.primary;
+  }
+}
+
+function setCheckboxes(checkboxes: HTMLInputElement[], checked: boolean): void {
+  for (const checkbox of checkboxes) {
+    if (checkbox.disabled || checkbox.checked === checked) continue;
+    checkbox.checked = checked;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+  }
+}
+
+function injectMasterCheckbox(column: CheckboxColumn): void {
+  const { headerEl, checkboxes } = column;
+  if (headerEl.querySelector(`.${MASTER_CLASS}`)) return;
+
+  const ownerDocument = headerEl.ownerDocument ?? document;
+  const view = ownerDocument.defaultView;
+  const wrap = ownerDocument.createElement('div');
+  wrap.className = WRAP_CLASS;
+  Object.assign(wrap.style, {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '1px 6px 1px 4px',
+    borderRadius: '10px',
+    background: 'linear-gradient(135deg, #e8f4fd 0%, #dbeafe 100%)',
+    border: `1px solid ${tokens.color.primaryBorder}`,
+    cursor: 'pointer',
+    userSelect: 'none',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 1px 2px rgba(1,118,211,0.10)',
+    transition: `all ${tokens.transition.fast}`,
+    lineHeight: '1',
+    verticalAlign: 'middle',
+    marginLeft: '4px',
+  });
+
+  const master = ownerDocument.createElement('input');
+  master.type = 'checkbox';
+  master.className = MASTER_CLASS;
+  master.title = 'Toggle all checkboxes in this column';
+  Object.assign(master.style, {
+    cursor: 'pointer',
+    width: '12px',
+    height: '12px',
+    margin: '0',
+    accentColor: tokens.color.primary,
+    flexShrink: '0',
+  });
+
+  const counter = ownerDocument.createElement('span');
+  counter.className = COUNTER_CLASS;
+  Object.assign(counter.style, {
+    fontSize: '10px',
+    fontFamily: tokens.font.family.mono,
+    fontWeight: String(tokens.font.weight.semibold),
+    lineHeight: '1',
+    minWidth: '16px',
+    letterSpacing: '-0.3px',
+  });
+
+  syncMaster(master, counter, checkboxes);
+
+  const cleanupFns: Array<() => void> = [];
+  cleanupFns.push(
+    addManagedListener(master, 'change', (event) => {
+      event.stopPropagation();
+      setCheckboxes(checkboxes, master.checked);
+      syncMaster(master, counter, checkboxes);
+    }),
+  );
+  cleanupFns.push(
+    addManagedListener(wrap, 'click', (event) => {
+      if (event.target === master) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const { checked, total } = countState(checkboxes);
+      const shouldCheck = checked < total;
+      master.checked = shouldCheck;
+      setCheckboxes(checkboxes, shouldCheck);
+      syncMaster(master, counter, checkboxes);
+    }),
+  );
+  cleanupFns.push(
+    addManagedListener(wrap, 'mouseenter', () => {
+      wrap.style.borderColor = tokens.color.primary;
+      wrap.style.boxShadow = '0 1px 4px rgba(1,118,211,0.22)';
+      wrap.style.background = 'linear-gradient(135deg, #dbeafe 0%, #c7d8f7 100%)';
+    }),
+  );
+  cleanupFns.push(
+    addManagedListener(wrap, 'mouseleave', () => {
+      wrap.style.borderColor = tokens.color.primaryBorder;
+      wrap.style.boxShadow = '0 1px 2px rgba(1,118,211,0.10)';
+      wrap.style.background = 'linear-gradient(135deg, #e8f4fd 0%, #dbeafe 100%)';
+    }),
   );
 
-  const uncheckAllBtn = createBulkButton(
-    '✗ All',
-    'Uncheck all checkboxes in this column',
-    () => setCheckboxes(checkboxes, false),
-  );
+  for (const checkbox of checkboxes) {
+    cleanupFns.push(
+      addManagedListener(checkbox, 'change', () => {
+        syncMaster(master, counter, checkboxes);
+      }),
+    );
+    cleanupFns.push(
+      addManagedListener(checkbox, 'click', () => {
+        if (view?.requestAnimationFrame) {
+          view.requestAnimationFrame(() => syncMaster(master, counter, checkboxes));
+        } else {
+          syncMaster(master, counter, checkboxes);
+        }
+      }),
+    );
+  }
 
-  wrap.append(checkAllBtn, uncheckAllBtn);
-  headerCell.appendChild(wrap);
+  wrap.append(master, counter);
+
+  const existingCheckbox = headerEl.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  if (existingCheckbox && existingCheckbox !== master) {
+    existingCheckbox.insertAdjacentElement('afterend', wrap);
+  } else {
+    headerEl.appendChild(wrap);
+  }
+
+  registerControlCleanup(() => {
+    for (const cleanup of cleanupFns.splice(0).reverse()) {
+      cleanup();
+    }
+    wrap.remove();
+  });
 }
 
 function scanAndInject(): void {
-  const docs = getSetupIframeDocuments();
+  const docs = getTargetDocuments();
 
   for (const doc of docs) {
     const columns = findCheckboxColumns(doc);
-
-    // Mark tables as processed
     const processedTables = new Set<HTMLTableElement>();
-    for (const col of columns) {
-      if (!processedTables.has(col.table)) {
-        col.table.setAttribute(DATA_ATTR, 'true');
-        processedTables.add(col.table);
+
+    for (const column of columns) {
+      if (!processedTables.has(column.table)) {
+        column.table.setAttribute(DATA_ATTR, 'true');
+        processedTables.add(column.table);
       }
-      injectBulkControls(col);
+      injectMasterCheckbox(column);
     }
   }
 }
 
 function removeAllControls(): void {
-  lifecycleToken += 1;
+  runControlCleanups();
 
-  // Clean from main document
-  document.querySelectorAll('.sfboost-bulk-check-wrap').forEach(el => el.remove());
-  document.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {
-    table.removeAttribute(DATA_ATTR);
-  });
-
-  // Clean from iframes
-  const docs = getSetupIframeDocuments();
-  for (const doc of docs) {
-    doc.querySelectorAll('.sfboost-bulk-check-wrap').forEach(el => el.remove());
-    doc.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {
+  for (const doc of getTargetDocuments()) {
+    doc.querySelectorAll(`.${WRAP_CLASS}`).forEach((el) => el.remove());
+    doc.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach((table) => {
       table.removeAttribute(DATA_ATTR);
     });
   }
 }
 
 function startObserver(): void {
-  if (observer) observer.disconnect();
+  stopObserver();
 
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   observer = new MutationObserver(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null;
+    if (observerDebounceTimer) clearTimeout(observerDebounceTimer);
+    observerDebounceTimer = setTimeout(() => {
+      observerDebounceTimer = null;
       scanAndInject();
     }, 800);
   });
 
-  // Observe main document
   const root = document.querySelector('.oneContent, .mainContentMark, #content') ?? document.body;
   observer.observe(root, { childList: true, subtree: true });
 
-  // Also observe iframe load events
-  document.querySelectorAll<HTMLIFrameElement>('iframe').forEach(iframe => {
-    iframe.addEventListener('load', () => {
-      setTimeout(scanAndInject, 500);
-    });
+  document.querySelectorAll<HTMLIFrameElement>('iframe').forEach((iframe) => {
+    const onLoad = () => scheduleDeferredScan(500);
+    iframe.addEventListener('load', onLoad);
+    iframeLoadCleanups.add(() => iframe.removeEventListener('load', onLoad));
   });
 }
 
 function stopObserver(): void {
   observer?.disconnect();
   observer = null;
+
+  if (observerDebounceTimer) {
+    clearTimeout(observerDebounceTimer);
+    observerDebounceTimer = null;
+  }
+
+  clearIframeLoadCleanups();
+  clearPendingScanTimers();
 }
 
 const bulkCheck: SFBoostModule = {
@@ -251,7 +477,6 @@ const bulkCheck: SFBoostModule = {
 
   async init(ctx: ModuleContext) {
     if (!isSetupPage(ctx)) return;
-
     initTimer = setTimeout(() => {
       scanAndInject();
       startObserver();
@@ -267,7 +492,6 @@ const bulkCheck: SFBoostModule = {
     }
 
     if (!isSetupPage(ctx)) return;
-
     initTimer = setTimeout(() => {
       scanAndInject();
       startObserver();

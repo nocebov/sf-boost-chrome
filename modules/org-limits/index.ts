@@ -1,13 +1,9 @@
-import { registry } from '../registry';
-import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
 import { tokens } from '../../lib/design-tokens';
 import { createModal, createSpinner, createButton, createInput } from '../../lib/ui-helpers';
 
 const MODAL_ID = 'sfboost-org-limits';
-const EVENT_NAME = 'sfboost:show-org-limits';
 
-let currentCtx: ModuleContext | null = null;
 let modalCleanup: (() => void) | null = null;
 
 interface LimitEntry {
@@ -178,11 +174,9 @@ function closeModal(): void {
   }
 }
 
-async function showOrgLimits(): Promise<void> {
-  if (!currentCtx) return;
+export async function showOrgLimits(instanceUrl: string): Promise<void> {
   closeModal();
 
-  const { instanceUrl } = currentCtx.pageContext;
   const { backdrop, card, close } = createModal(MODAL_ID, { width: '560px' });
   modalCleanup = close;
 
@@ -297,30 +291,3 @@ async function showOrgLimits(): Promise<void> {
 
   void loadLimits();
 }
-
-function handleShowLimits(): void {
-  void showOrgLimits();
-}
-
-const orgLimitsModule: SFBoostModule = {
-  id: 'org-limits',
-  name: 'Org Limits',
-  description: 'View API limits, storage, and usage for the current org',
-
-  async init(ctx: ModuleContext) {
-    currentCtx = ctx;
-    document.addEventListener(EVENT_NAME, handleShowLimits);
-  },
-
-  async onNavigate(ctx: ModuleContext) {
-    currentCtx = ctx;
-  },
-
-  destroy() {
-    document.removeEventListener(EVENT_NAME, handleShowLimits);
-    closeModal();
-    currentCtx = null;
-  },
-};
-
-registry.register(orgLimitsModule);

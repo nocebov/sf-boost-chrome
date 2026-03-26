@@ -6,7 +6,7 @@ If you discover a security vulnerability in SF Boost, please report it responsib
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email: **nocebov@users.noreply.github.com**
+Instead, please email: **zhuravinskyy470@gmail.com**
 
 Include:
 - A description of the vulnerability
@@ -28,5 +28,5 @@ Security concerns related to any of these areas are in scope.
 
 | Version | Supported |
 |---------|-----------|
-| 0.3.x   | Yes       |
-| < 0.3   | No        |
+| 0.7.x   | Yes       |
+| < 0.7   | No        |

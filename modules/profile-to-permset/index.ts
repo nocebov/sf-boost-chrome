@@ -17,6 +17,7 @@ import { createPermSetViaApi, sanitizeApiName, permSetExists } from './permset-g
 import { isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
 
 const BTN_ID = 'sfboost-extract-permset-btn';
+const WRAPPER_ID = 'sfboost-extract-permset-wrapper';
 const MODAL_ID = 'sfboost-permset-modal';
 
 let currentCtx: ModuleContext | null = null;
@@ -60,6 +61,24 @@ function queryAcrossDocuments(selectors: string[]): Element | null {
 function removeByIdAcrossDocuments(id: string): void {
   for (const doc of getAccessibleDocuments()) {
     doc.getElementById(id)?.remove();
+  }
+}
+
+/** Remove the button wrapper and restore the header to its original position */
+function removeButtonAndWrapper(): void {
+  for (const doc of getAccessibleDocuments()) {
+    doc.getElementById(BTN_ID)?.remove();
+    const wrapper = doc.getElementById(WRAPPER_ID);
+    if (wrapper) {
+      const parent = wrapper.parentElement;
+      if (parent) {
+        // Move all remaining children (the header) back to the original parent
+        while (wrapper.firstChild) {
+          parent.insertBefore(wrapper.firstChild, wrapper);
+        }
+      }
+      wrapper.remove();
+    }
   }
 }
 
@@ -116,6 +135,9 @@ function injectButton(): boolean {
   const profileId = extractProfileIdFromUrl();
   if (!profileId) return false;
 
+  // Clean up any orphaned wrapper from a previous injection before re-injecting
+  removeButtonAndWrapper();
+
   const headerSelectors = [
     '.slds-page-header__title',
     'h1.slds-page-header__title',
@@ -133,6 +155,7 @@ function injectButton(): boolean {
 
   // Wrap header + button in a flex row so they sit on the same line
   const wrapper = document.createElement('div');
+  wrapper.id = WRAPPER_ID;
   wrapper.setAttribute('style', `display: flex; align-items: center; gap: ${tokens.space.md}; flex-wrap: wrap;`);
 
   if (header.parentElement) {
@@ -1800,7 +1823,7 @@ const profileToPermset: SFBoostModule = {
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
     cancelRetry();
-    removeByIdAcrossDocuments(BTN_ID);
+    removeButtonAndWrapper();
     document.getElementById(MODAL_ID)?.remove();
     document.getElementById(`${MODAL_ID}-backdrop`)?.remove();
 
@@ -1811,7 +1834,7 @@ const profileToPermset: SFBoostModule = {
 
   destroy() {
     cancelRetry();
-    removeByIdAcrossDocuments(BTN_ID);
+    removeButtonAndWrapper();
     document.getElementById(MODAL_ID)?.remove();
     document.getElementById(`${MODAL_ID}-backdrop`)?.remove();
     currentCtx = null;

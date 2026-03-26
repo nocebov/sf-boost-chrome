@@ -1,5 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { detectOrgType, buildInstanceUrl, parseLightningUrl } from '../lib/salesforce-urls';
+import {
+  detectOrgType,
+  buildInstanceUrl,
+  isSalesforceOrgHost,
+  parseLightningUrl,
+} from '../lib/salesforce-urls';
+
+describe('isSalesforceOrgHost', () => {
+  it('accepts classic Salesforce pod hosts', () => {
+    expect(isSalesforceOrgHost('na123.salesforce.com')).toBe(true);
+    expect(isSalesforceOrgHost('cs88.salesforce.com')).toBe(true);
+  });
+
+  it('accepts supported authenticated org hosts', () => {
+    expect(isSalesforceOrgHost('acme.my.salesforce.com')).toBe(true);
+    expect(isSalesforceOrgHost('acme.lightning.force.com')).toBe(true);
+    expect(isSalesforceOrgHost('acme.salesforce-setup.com')).toBe(true);
+  });
+
+  it('rejects public Salesforce web properties', () => {
+    expect(isSalesforceOrgHost('help.salesforce.com')).toBe(false);
+    expect(isSalesforceOrgHost('login.salesforce.com')).toBe(false);
+    expect(isSalesforceOrgHost('developer.salesforce.com')).toBe(false);
+    expect(isSalesforceOrgHost('trailhead.salesforce.com')).toBe(false);
+  });
+});
 
 // ─── detectOrgType ──────────────────────────────────────────────────────────
 
@@ -188,6 +213,16 @@ describe('parseLightningUrl', () => {
 
     it('parses nested setup URL', () => {
       const result = parseLightningUrl('/lightning/setup/CustomPermissions/page');
+      expect(result.pageType).toBe('setup');
+    });
+
+    it('parses classic setup paths', () => {
+      const result = parseLightningUrl('/setup/forcecomHomepage.apexp');
+      expect(result.pageType).toBe('setup');
+    });
+
+    it('parses classic setup query parameters on legacy pages', () => {
+      const result = parseLightningUrl('/00e123456789012', '?setupid=EnhancedProfiles&isdtp=p1');
       expect(result.pageType).toBe('setup');
     });
   });

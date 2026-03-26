@@ -13,6 +13,34 @@ export interface OrgInfo {
   sandboxName?: string;
 }
 
+const SALESFORCE_CLASSIC_POD_HOST_RE = /^[a-z]{2,6}\d+(?:-[a-z0-9-]+)?\.salesforce\.com$/i;
+const CLASSIC_SETUP_PATH_RE = /^(?:\/setup\/|\/ui\/setup\/|\/p\/setup\/)/i;
+
+/**
+ * Returns true only for hostnames that belong to an actual Salesforce org
+ * (Lightning, classic pod hosts, setup hosts, code-builder).
+ * Excludes public/informational sites like help.salesforce.com and login.salesforce.com.
+ */
+export function isSalesforceOrgHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized.endsWith('.my.salesforce.com') ||
+    normalized.endsWith('.lightning.force.com') ||
+    normalized.endsWith('.salesforce-setup.com') ||
+    normalized.endsWith('.code-builder.platform.salesforce.com') ||
+    SALESFORCE_CLASSIC_POD_HOST_RE.test(normalized)
+  );
+}
+
+function isClassicSetupUrl(pathname: string, search = ''): boolean {
+  const normalizedSearch = search.toLowerCase();
+  return (
+    CLASSIC_SETUP_PATH_RE.test(pathname) ||
+    normalizedSearch.includes('setupid=') ||
+    normalizedSearch.includes('isdtp=')
+  );
+}
+
 export function detectOrgType(hostname: string): OrgInfo {
   // Sandbox: {MyDomain}--{SandboxName}.sandbox.my.salesforce.com
   if (hostname.includes('.sandbox.')) {
@@ -70,7 +98,7 @@ export interface ParsedPage {
   recordId?: string;
 }
 
-export function parseLightningUrl(pathname: string): ParsedPage {
+export function parseLightningUrl(pathname: string, search = ''): ParsedPage {
   // Flow Builder: /builder_platform_interaction/flowBuilder.app
   if (pathname.includes('/builder_platform_interaction/flowBuilder.app')) {
     return { pageType: 'flow-builder' };
@@ -95,6 +123,11 @@ export function parseLightningUrl(pathname: string): ParsedPage {
 
   // Setup
   if (pathname.startsWith('/lightning/setup/')) {
+    return { pageType: 'setup' };
+  }
+
+  // Classic Setup pages on *.salesforce.com / *.my.salesforce.com
+  if (isClassicSetupUrl(pathname, search)) {
     return { pageType: 'setup' };
   }
 

@@ -20,7 +20,7 @@ Manual testing checklist before publishing a new version to the Chrome Web Store
 |---|-----------|-----------------|
 | 1.1 | Click the SF Boost icon in the toolbar | Popup opens, shows module list with toggles |
 | 1.2 | Verify default-enabled modules are ON | Command Palette, Field Inspector, Quick Copy, Table Filter, Environment Safeguard are checked |
-| 1.3 | Verify default-disabled modules are OFF | Dependency Inspector, Change Set Buddy, Profile to Permission Set, Hide DevOps Bar are unchecked |
+| 1.3 | Verify default-disabled modules are OFF | Dependency Inspector, Change Set Buddy, Profile to Permission Set, Bulk Check, Hide DevOps Bar, and Console Formatter are unchecked |
 | 1.4 | Toggle a module OFF, reload the Salesforce page | Module is no longer active on the page |
 | 1.5 | Toggle a module ON, verify it activates immediately | Module starts working without page reload |
 | 1.6 | Click "Keyboard Shortcuts" link | Opens `chrome://extensions/shortcuts` |
@@ -158,38 +158,62 @@ Manual testing checklist before publishing a new version to the Chrome Web Store
 
 ---
 
-## 11. SPA Navigation
+## 11. Bulk Check (disabled by default)
 
 | # | Test Case | Expected Result |
 |---|-----------|-----------------|
-| 11.1 | Click internal links in Salesforce | Modules update correctly without page reload |
-| 11.2 | Use browser back/forward buttons | Modules respond to history navigation |
-| 11.3 | Navigate rapidly between pages | No stale UI, no duplicate elements |
-| 11.4 | Open the same page in multiple tabs | Each tab works independently |
+| 11.1 | Enable the module in the popup while a Profile/Permission Set edit page is already open | Master checkbox controls appear without a full page reload |
+| 11.2 | Open a Profile or Permission Set edit page in Setup | A compact master checkbox + `checked / total` counter appears in checkbox-column headers |
+| 11.3 | Click the master control | All enabled checkboxes in that column toggle and Salesforce reacts to the change |
+| 11.4 | Test on a page rendered inside a classic Setup iframe | The control still appears and works inside the iframe |
+| 11.5 | Disable the module while the page stays open | Injected controls disappear cleanly and no duplicate controls remain after re-enable |
 
 ---
 
-## 12. Cross-Browser & Edge Cases
+## 12. Console Formatter (disabled by default)
 
 | # | Test Case | Expected Result |
 |---|-----------|-----------------|
-| 12.1 | Test in Chrome (latest stable) | All modules work correctly |
-| 12.2 | Test with multiple Salesforce tabs open | Extension works in each tab independently |
-| 12.3 | Reload extension via `chrome://extensions` | Extension recovers; all modules re-initialize on next page load |
-| 12.4 | Test with slow network (Chrome DevTools throttling) | API calls retry correctly; UI doesn't break |
-| 12.5 | Open a non-Salesforce page | Extension does not inject, no console errors |
-| 12.6 | Check DevTools console for errors during all tests | No `[SF Boost]` errors in the console |
+| 12.1 | Enable the module on an authenticated org host | `window.SFBoostConsole` becomes available without reloading the tab |
+| 12.2 | Log a proxy-heavy LWC/LWS value in DevTools | Output is shown as a readable plain snapshot / expandable object instead of an opaque proxy |
+| 12.3 | Disable the module while the page stays open | `window.SFBoostConsole` is removed and native console methods are restored |
+| 12.4 | Open a public Salesforce property such as `help.salesforce.com` with the module enabled | The formatter does not inject there |
 
 ---
 
-## 13. Security & Privacy
+## 13. SPA Navigation
 
 | # | Test Case | Expected Result |
 |---|-----------|-----------------|
-| 13.1 | Verify extension only activates on Salesforce domains | Content script doesn't run on other sites |
-| 13.2 | Check that session tokens are not logged | No session IDs in console output |
-| 13.3 | Verify API calls use HTTPS only | No HTTP requests in Network tab |
-| 13.4 | Test with expired/invalid session | Extension handles gracefully — no unhandled errors |
+| 13.1 | Click internal links in Salesforce | Modules update correctly without page reload |
+| 13.2 | Use browser back/forward buttons | Modules respond to history navigation |
+| 13.3 | Navigate rapidly between pages | No stale UI, no duplicate elements |
+| 13.4 | Open the same page in multiple tabs | Each tab works independently |
+
+---
+
+## 14. Cross-Browser & Edge Cases
+
+| # | Test Case | Expected Result |
+|---|-----------|-----------------|
+| 14.1 | Test in Chrome (latest stable) | All modules work correctly |
+| 14.2 | Test with multiple Salesforce tabs open | Extension works in each tab independently |
+| 14.3 | Reload extension via `chrome://extensions` | Extension recovers; all modules re-initialize on next page load |
+| 14.4 | Test with slow network (Chrome DevTools throttling) | API calls retry correctly; UI doesn't break |
+| 14.5 | Open a non-Salesforce page | Extension does not inject, no console errors |
+| 14.6 | Check DevTools console for errors during all tests | No `[SF Boost]` errors in the console |
+
+---
+
+## 15. Security & Privacy
+
+| # | Test Case | Expected Result |
+|---|-----------|-----------------|
+| 15.1 | Verify extension only activates on Salesforce domains | Content script doesn't run on other sites |
+| 15.2 | Verify `Console Formatter` does not inject on public Salesforce properties | No `window.SFBoostConsole` on `help.salesforce.com` or similar pages |
+| 15.3 | Check that session tokens are not logged | No session IDs in console output |
+| 15.4 | Verify API calls use HTTPS only | No HTTP requests in Network tab |
+| 15.5 | Test with expired/invalid session | Extension handles gracefully — no unhandled errors |
 
 ---
 

@@ -12,6 +12,7 @@ import {
   type QuickAction,
 } from './quick-actions';
 import { getQuickActionConfig, setQuickActionConfig } from '../../lib/storage';
+import { showOrgLimits } from '../org-limits';
 
 const PALETTE_ID = 'sfboost-command-palette';
 
@@ -261,7 +262,7 @@ function createPaletteUI() {
       handleToggleDebugLog();
     } else if (qa.actionId === 'show-org-limits') {
       closePalette();
-      document.dispatchEvent(new CustomEvent('sfboost:show-org-limits'));
+      void showOrgLimits(currentCtx!.pageContext.instanceUrl);
     } else if (qa.customUrl) {
       closePalette();
       if (newTab) {

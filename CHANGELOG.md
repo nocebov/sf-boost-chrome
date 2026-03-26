@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-26
+
+### Added
+- **Release smoke coverage upgraded to real MV3 runtime**: `scripts/smoke-test.mjs` now loads the built unpacked extension in Chrome, verifies the real popup, checks classic pod-host injection, exercises runtime `bulk-check` toggle inside a cross-origin Setup iframe, and confirms `console-formatter` only injects on supported org hosts.
+
+### Changed
+- **Classic org host detection restored**: `lib/salesforce-urls.ts` once again treats real `*.salesforce.com` pod hosts as authenticated org pages instead of dropping them at content-script bootstrap.
+- **Classic Setup page parsing expanded**: legacy `/setup/...`, `/ui/setup/...`, `/p/setup/...`, and `setupid` / `isdtp` URLs now resolve to `pageType: 'setup'`, so setup-focused modules continue to initialize on direct classic pages.
+- **Bulk Check lifecycle hardened**: runtime toggle now works inside classic Setup iframes without reload, iframe contexts stay subscribed even when the module starts disabled, and injected controls fully clean up their event listeners on disable/destroy.
+- **Console Formatter scope tightened**: document-start MAIN-world bootstrap is now limited to authenticated org hosts (`*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`) with extra runtime guards to avoid injection on public Salesforce properties.
+- **Release metadata synchronized**: manifest, package version, reviewer notes, privacy policy, QA checklist, README, and security policy now align on `0.7.0`.
+
 ## [0.6.0] - 2026-03-21
 
 ### Added
