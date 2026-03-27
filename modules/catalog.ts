@@ -15,6 +15,11 @@ export interface ModuleCatalogEntry {
   defaultEnabled: boolean;
   accessLevel: ModuleAccessLevel;
   settings?: ModuleSettingDef[];
+  shortcutHint?: {
+    label: string;
+    defaultKeys: string;
+    note: string;
+  };
 }
 
 export const MODULE_CATALOG: ModuleCatalogEntry[] = [
@@ -25,17 +30,21 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     info: 'Quick access to Setup pages, Apex classes, triggers, flows, profiles, permission sets. Toggle Debug Log creates/deletes TraceFlags. Quick SOQL executes queries.',
     defaultEnabled: true,
     accessLevel: 'write-capable',
+    shortcutHint: {
+      label: 'Default shortcut',
+      defaultKeys: 'Alt+Shift+S',
+      note: 'Change it in Settings.',
+    },
   },
   {
     id: 'field-inspector',
     name: 'Field Inspector',
     description: 'Show API names and metadata on fields',
-    info: 'Reveals API names next to record fields and list-view columns. Click a badge for field metadata, copy helpers, and a shortcut to the field in Object Manager. Uses Salesforce describe metadata from the active org only when the module is enabled.',
+    info: 'Reveals API names next to record fields. Click a badge for field metadata, copy helpers, and a shortcut to the field in Object Manager. Uses Salesforce describe metadata from the active org only when the module is enabled.',
     defaultEnabled: true,
     accessLevel: 'read-only',
     settings: [
       { key: 'showOnRecords', label: 'Show on record pages', type: 'boolean', default: true },
-      { key: 'showOnListViews', label: 'Show on list views', type: 'boolean', default: true },
       { key: 'showFieldUsage', label: 'Show field usage % in popover', type: 'boolean', default: true },
     ],
   },
@@ -55,9 +64,15 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     id: 'table-filter',
     name: 'Table Filter',
     description: 'Quick search for Salesforce tables',
-    info: 'Works on Setup list views. Adds a search box above the table to filter rows. Automatically loads all rows in the background for seamless search on large tables.',
+    info: 'Works on Setup list views. Adds a search box above the table to filter rows. Loads rows on demand when you start typing, with progressive results as rows load.',
     defaultEnabled: true,
     accessLevel: 'ui-only',
+    settings: [
+      { key: 'showOnSetupPages', label: 'Show on Setup pages', type: 'boolean', default: true },
+      { key: 'showOnListViews', label: 'Show on list views', type: 'boolean', default: true },
+      { key: 'autoLoadLazyRows', label: 'Load all rows when filtering', type: 'boolean', default: true },
+      { key: 'autoExpandClassicPagination', label: 'Auto-expand Classic pagination', type: 'boolean', default: true },
+    ],
   },
   {
     id: 'environment-safeguard',

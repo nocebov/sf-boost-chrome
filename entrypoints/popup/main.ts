@@ -1,6 +1,7 @@
 import { getEnabledModules, setEnabledModules } from '../../lib/storage';
 import { MODULE_CATALOG } from '../../modules/catalog';
 import type { ModuleAccessLevel } from '../../modules/catalog';
+import { getSalesforceOrgContextFromUrl } from '../../lib/salesforce-urls';
 
 const REPO_URL = 'https://github.com/nocebov/sf-boost-chrome';
 const PRIVACY_POLICY_URL = `${REPO_URL}/blob/master/docs/privacy-policy.md`;
@@ -49,7 +50,31 @@ function createModuleItem(
 
   const details = document.createElement('div');
   details.className = 'module-details';
-  details.textContent = mod.info;
+
+  const detailsText = document.createElement('p');
+  detailsText.className = 'module-details-text';
+  detailsText.textContent = mod.info;
+  details.appendChild(detailsText);
+
+  if (mod.shortcutHint) {
+    const shortcutCallout = document.createElement('div');
+    shortcutCallout.className = 'module-shortcut-callout';
+
+    const shortcutLabel = document.createElement('span');
+    shortcutLabel.className = 'module-shortcut-label';
+    shortcutLabel.textContent = mod.shortcutHint.label;
+
+    const shortcutValue = document.createElement('kbd');
+    shortcutValue.className = 'module-shortcut-pill';
+    shortcutValue.textContent = mod.shortcutHint.defaultKeys;
+
+    const shortcutNote = document.createElement('span');
+    shortcutNote.className = 'module-shortcut-note';
+    shortcutNote.textContent = mod.shortcutHint.note;
+
+    shortcutCallout.append(shortcutLabel, shortcutValue, shortcutNote);
+    details.appendChild(shortcutCallout);
+  }
 
   info.setAttribute('role', 'button');
   info.setAttribute('aria-expanded', 'false');
@@ -144,12 +169,20 @@ document.addEventListener('change', async (e) => {
   );
 });
 
-document.getElementById('settings-btn')?.addEventListener('click', () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL('/settings.html') });
-});
+document.getElementById('settings-btn')?.addEventListener('click', async () => {
+  let settingsUrl = chrome.runtime.getURL('/settings.html');
 
-document.getElementById('shortcuts-btn')?.addEventListener('click', () => {
-  chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url && getSalesforceOrgContextFromUrl(tab.url)) {
+      const params = new URLSearchParams({ tabUrl: tab.url });
+      settingsUrl = `${settingsUrl}?${params.toString()}`;
+    }
+  } catch {
+    // If the active tab URL is unavailable, open the generic settings page.
+  }
+
+  chrome.tabs.create({ url: settingsUrl });
 });
 
 document.getElementById('privacy-btn')?.addEventListener('click', () => {

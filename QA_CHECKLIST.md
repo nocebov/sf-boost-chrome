@@ -23,9 +23,10 @@ Manual testing checklist before publishing a new version to the Chrome Web Store
 | 1.3 | Verify default-disabled modules are OFF | Dependency Inspector, Change Set Buddy, Profile to Permission Set, Bulk Check, Hide DevOps Bar, and Console Formatter are unchecked |
 | 1.4 | Toggle a module OFF, reload the Salesforce page | Module is no longer active on the page |
 | 1.5 | Toggle a module ON, verify it activates immediately | Module starts working without page reload |
-| 1.6 | Click "Keyboard Shortcuts" link | Opens `chrome://extensions/shortcuts` |
-| 1.7 | Verify version number matches `package.json` | Version label in popup footer is correct |
-| 1.8 | Close and reopen popup — toggles persist | Same modules remain enabled/disabled |
+| 1.6 | Click the `Settings` button in the popup footer | Settings page opens with module settings and shortcut info |
+| 1.7 | Click `Open Chrome shortcut settings` on the Settings page | Opens `chrome://extensions/shortcuts` |
+| 1.8 | Verify version number matches `package.json` and `wxt.config.ts` | Version label is correct in the popup and settings page |
+| 1.9 | Close and reopen popup — toggles persist | Same modules remain enabled/disabled |
 
 ---
 
@@ -34,9 +35,9 @@ Manual testing checklist before publishing a new version to the Chrome Web Store
 | # | Test Case | Expected Result |
 |---|-----------|-----------------|
 | 2.1 | Open a **Production** org | Red "PRODUCTION" badge appears in top-left corner |
-| 2.2 | Open a **Sandbox** org | Green badge with sandbox name appears |
+| 2.2 | Open a **Sandbox** org | Orange badge with sandbox name appears |
 | 2.3 | Check browser tab title | Tab title is prefixed with environment label (e.g., `[PROD]` or `[SANDBOX_NAME]`) |
-| 2.4 | Check extension badge (icon) | Background color matches org type (red/green/blue/purple) |
+| 2.4 | Check the Salesforce tab favicon (default setting) | Favicon recolors to match the current environment |
 | 2.5 | Navigate to Flow Builder | Badge hides automatically (no overlap with toolbar) |
 | 2.6 | Navigate away from Flow Builder | Badge reappears |
 | 2.7 | Test with different org types (Dev, Scratch) if available | Correct color and label for each type |
@@ -71,12 +72,13 @@ Manual testing checklist before publishing a new version to the Chrome Web Store
 | # | Test Case | Expected Result |
 |---|-----------|-----------------|
 | 4.1 | Open a record page (e.g., Account) | API name badges appear next to field labels |
-| 4.2 | Click a badge | API name is copied to clipboard; badge turns green with "Copied!" |
-| 4.3 | Badge reverts after copy | Color returns to normal after ~1-2 seconds |
-| 4.4 | Expand a collapsed section on the record | New badges appear for newly visible fields |
-| 4.5 | Navigate to a different record type | Badges update for the new object's fields |
-| 4.6 | Navigate to a non-record page (list, setup) | No badges appear |
-| 4.7 | Press `Alt+Shift+F` (toggle shortcut) | Field Inspector toggles on/off |
+| 4.2 | Click a badge | Metadata popover opens with API name, type, access hints, and quick actions |
+| 4.3 | Ctrl/Cmd+click a badge | API name is copied to the clipboard |
+| 4.4 | If `Show field usage % in popover` is enabled, open a badge popover | Usage section appears with sampled fill-rate data or a safe fallback message |
+| 4.5 | Expand a collapsed section on the record | New badges appear for newly visible fields |
+| 4.6 | Navigate to a different record type | Badges update for the new object's fields |
+| 4.7 | Navigate to a non-record page (list, setup) | No badges appear |
+| 4.8 | Press `Alt+Shift+F` (toggle shortcut) | Field Inspector toggles on/off |
 
 ---
 

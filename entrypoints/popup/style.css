@@ -28,6 +28,7 @@
   --sfb-error: #ef4444;
 
   --sfb-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --sfb-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 
   --sfb-size-xs: 10px;
   --sfb-size-sm: 11px;
@@ -58,6 +59,7 @@
   --sfb-transition-fast: 0.1s;
   --sfb-transition-normal: 0.15s;
   --sfb-transition-slow: 0.2s;
+  --sfb-shadow-xs: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 * {
@@ -246,16 +248,60 @@ body {
   max-height: 0;
   opacity: 0;
   transition: max-height var(--sfb-transition-slow) ease, opacity var(--sfb-transition-slow) ease, margin var(--sfb-transition-slow) ease;
-  font-size: var(--sfb-size-sm);
-  color: var(--sfb-text-secondary);
-  line-height: 1.45;
   margin-top: 0;
 }
 
 .module-details.show {
-  max-height: 120px;
+  max-height: 220px;
   opacity: 1;
   margin-top: var(--sfb-space-xs);
+}
+
+.module-details-text {
+  font-size: var(--sfb-size-sm);
+  color: var(--sfb-text-secondary);
+  line-height: 1.45;
+}
+
+.module-shortcut-callout {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sfb-space-sm);
+  margin-top: var(--sfb-space-sm);
+  padding: var(--sfb-space-sm) var(--sfb-space-md);
+  border: 1px solid var(--sfb-info-border);
+  border-radius: var(--sfb-radius-md);
+  background: linear-gradient(135deg, var(--sfb-info-light), var(--sfb-surface-base));
+}
+
+.module-shortcut-label {
+  font-size: var(--sfb-size-xs);
+  font-weight: var(--sfb-weight-semibold);
+  color: var(--sfb-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.module-shortcut-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 var(--sfb-space-md);
+  border: 1px solid var(--sfb-border-default);
+  border-bottom-color: var(--sfb-border-muted);
+  border-radius: var(--sfb-radius-pill);
+  background: var(--sfb-surface-base);
+  color: var(--sfb-text-primary);
+  font-size: var(--sfb-size-sm);
+  font-family: var(--sfb-font-mono);
+  font-weight: var(--sfb-weight-semibold);
+  box-shadow: var(--sfb-shadow-xs);
+}
+
+.module-shortcut-note {
+  font-size: var(--sfb-size-sm);
+  color: var(--sfb-text-secondary);
 }
 
 /* ── Toggle switch ── */

@@ -54,10 +54,35 @@ describe('MODULE_CATALOG', () => {
     }
   });
 
+  it('table-filter exposes the new granular settings', () => {
+    expect(MODULE_CATALOG.find((module) => module.id === 'table-filter')?.settings).toEqual([
+      { key: 'showOnSetupPages', label: 'Show on Setup pages', type: 'boolean', default: true },
+      { key: 'showOnListViews', label: 'Show on list views', type: 'boolean', default: true },
+      { key: 'autoLoadLazyRows', label: 'Load all rows when filtering', type: 'boolean', default: true },
+      { key: 'autoExpandClassicPagination', label: 'Auto-expand Classic pagination', type: 'boolean', default: true },
+    ]);
+  });
+
+  it('field-inspector exposes record-only settings', () => {
+    expect(MODULE_CATALOG.find((module) => module.id === 'field-inspector')?.settings).toEqual([
+      { key: 'showOnRecords', label: 'Show on record pages', type: 'boolean', default: true },
+      { key: 'showFieldUsage', label: 'Show field usage % in popover', type: 'boolean', default: true },
+    ]);
+  });
+
   describe('access levels', () => {
     it('command-palette is write-capable', () => {
       expect(MODULE_CATALOG.find(m => m.id === 'command-palette')?.accessLevel)
         .toBe('write-capable');
+    });
+
+    it('command-palette exposes its default shortcut hint', () => {
+      expect(MODULE_CATALOG.find((module) => module.id === 'command-palette')?.shortcutHint)
+        .toEqual({
+          label: 'Default shortcut',
+          defaultKeys: 'Alt+Shift+S',
+          note: 'Change it in Settings.',
+        });
     });
 
     it('field-inspector is read-only', () => {

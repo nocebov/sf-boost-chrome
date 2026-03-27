@@ -4,11 +4,14 @@ SF Boost is a Chrome Extension that makes everyday Salesforce admin and develope
 
 **Install:** [Chrome Web Store](https://chromewebstore.google.com/detail/sf-boost/eiboagfkpffiagbjljpkkpehidoihegh)
 
+This guide covers SF Boost `0.7.0`.
+
 ---
 
 ## Table of Contents
 
 - [Getting Started](#getting-started)
+- [Settings Page](#settings-page)
 - [Modules](#modules)
   - [Command Palette](#command-palette)
   - [Field Inspector](#field-inspector)
@@ -18,7 +21,9 @@ SF Boost is a Chrome Extension that makes everyday Salesforce admin and develope
   - [Profile → Permission Set](#profile--permission-set)
   - [Deep Dependency Inspector](#deep-dependency-inspector)
   - [Change Set Buddy](#change-set-buddy)
+  - [Bulk Check](#bulk-check)
   - [Hide DevOps Center Bar](#hide-devops-center-bar)
+  - [Console Formatter](#console-formatter)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [FAQ](#faq)
 - [Troubleshooting](#troubleshooting)
@@ -31,8 +36,9 @@ SF Boost is a Chrome Extension that makes everyday Salesforce admin and develope
 2. Navigate to any Salesforce org — the extension activates automatically
 3. Click the SF Boost icon in your browser toolbar to open the popup
 4. Toggle modules on or off — changes apply instantly (no page reload needed)
+5. Use the popup `Settings` button when you want module-level options or shortcut help
 
-Five modules are enabled by default: **Command Palette**, **Field Inspector**, **Quick Copy**, **Table Filter**, and **Environment Safeguard**. Four more are available to enable when you need them.
+Five modules are enabled by default: **Command Palette**, **Field Inspector**, **Quick Copy**, **Table Filter**, and **Environment Safeguard**. Six more are available to enable when you need them.
 
 ### Access Levels
 
@@ -43,6 +49,20 @@ Each module has an access level that tells you what it can do:
 | **UI-only** | Works entirely in the browser. No Salesforce API calls. |
 | **Read-only** | Reads Salesforce metadata (describe, SOQL) but never writes. |
 | **Write-capable** | Can create or modify Salesforce data (e.g., create a Permission Set). Only acts when you explicitly trigger it. |
+
+---
+
+## Settings Page
+
+Open the popup and click **Settings** to access SF Boost's dedicated settings page.
+
+The current `0.7.0` settings page includes:
+
+- global module settings for **Field Inspector**, **Quick Copy**, **Table Filter**, and **Environment Safeguard**
+- a keyboard-shortcuts card with the default shortcuts for Command Palette and Field Inspector
+- a direct button to open `chrome://extensions/shortcuts`
+
+Settings save automatically. Module-setting changes are designed to apply on the next page load.
 
 ---
 
@@ -79,17 +99,18 @@ Jump anywhere in Setup — or search Salesforce metadata — without clicking th
 
 > Enabled by default · Read-only · `Alt+Shift+F` to toggle
 
-See field API names directly on Lightning record pages and list views.
+See field API names directly on Lightning record pages.
 
-**How it works:** Blue badges appear next to supported field labels on record pages and next to supported column headers in Lightning list views. Click a badge to open a metadata panel for that field.
+**How it works:** Blue badges appear next to supported field labels on record pages. Click a badge to open a metadata panel for that field.
 
 **Tips:**
-- Works on standard and custom object record pages, plus Lightning list views for the active object
+- Works on standard and custom object Lightning record pages
 - Uses Salesforce's describe API (cached for 1 hour per object, max 25 objects)
 - Toggle visibility with `Alt+Shift+F` without disabling the module
 - `Ctrl`/`Cmd` + click copies the API name immediately
 - The metadata panel includes quick actions for Copy API, Copy SOQL, Open Setup, and Copy Relationship (when available)
-- Badges update automatically when new sections or table headers are rendered
+- If enabled in Settings, the metadata panel also shows sampled field usage percentage based on up to 1,000 queried records with a 5-minute cache
+- Badges update automatically when new sections are rendered
 
 ---
 
@@ -118,13 +139,19 @@ A search bar appears above Setup list views, List Views, and Classic tables. Typ
 - Matched text highlighted in yellow
 - Clear with the × button or `Escape`
 
-**Smart row loading:** Lightning tables lazy-load rows as you scroll. Table Filter automatically scrolls the container to load all rows before filtering. On Classic pages with pagination, it selects the maximum "records per page" option.
+**Smart row loading:** Lightning tables lazy-load rows as you scroll. By default, Table Filter automatically loads lazy rows while filtering, and on Classic pages it selects the maximum "records per page" option.
+
+**Settings:** In **SF Boost Settings**, you can now control:
+- whether Table Filter appears on Setup pages
+- whether it appears on Lightning list views
+- whether lazy rows auto-load during filtering
+- whether Classic pagination auto-expands
 
 ---
 
 ### Environment Safeguard
 
-> Enabled by default · UI-only
+> Enabled by default · Read-only
 
 A color-coded badge in the top-left corner of every Salesforce page that tells you which environment you're in.
 
@@ -138,22 +165,11 @@ A color-coded badge in the top-left corner of every Salesforce page that tells y
 
 The badge is automatically hidden on Flow Builder and Lightning App Builder pages to avoid overlapping the canvas.
 
-**Customization per org:** You can override badge color, text color, and label for any org via `chrome.storage.sync`. Set the `orgSettings` key with your org's domain:
+By default, the badge can also show the org's current time, and the module can recolor the Salesforce favicon and prefix the browser tab title. In **SF Boost Settings**, you can control the global Environment Safeguard options for org clock, colored favicon, and tab-title prefix.
 
-```json
-{
-  "orgSettings": {
-    "mycompany.my.salesforce.com": {
-      "badgeColor": "#ff0000",
-      "badgeTextColor": "#ffffff",
-      "badgeLabel": "CAUTION",
-      "badgeEnabled": true
-    }
-  }
-}
-```
+When the org clock is enabled, Environment Safeguard performs a read-only query to resolve the org's timezone.
 
-Available settings: `badgeColor`, `badgeTextColor`, `badgeLabel`, `badgeEnabled` (true/false).
+**Legacy manual config:** Existing raw `chrome.storage.sync` overrides continue to load for compatibility.
 
 ---
 
@@ -206,6 +222,18 @@ Search and filter large Change Set component lists.
 
 ---
 
+### Bulk Check
+
+> Disabled by default · UI-only
+
+Adds an inline master checkbox with a live `checked / total` counter on Setup permission tables.
+
+**How to enable:** Open the SF Boost popup and toggle "Bulk Check" on.
+
+**How to use:** Open a Profile, Permission Set, or similar Setup edit page with checkbox columns. A compact control appears in the header so you can toggle the whole column at once. It dispatches the same checkbox events Salesforce expects, and it can also work inside classic Setup iframes that are embedded under Lightning Setup.
+
+---
+
 ### Hide DevOps Center Bar
 
 > Disabled by default · UI-only
@@ -215,6 +243,20 @@ Removes the DevOps Center navigation bar from all Salesforce pages.
 **How to enable:** Open the SF Boost popup and toggle "Hide DevOps Center Bar" on.
 
 Once enabled, the bar is hidden via CSS injection and stays hidden across page navigations. A MutationObserver catches any dynamically added DevOps bar elements.
+
+---
+
+### Console Formatter
+
+> Disabled by default · UI-only
+
+Readable snapshots for LWC/LWS console output when native DevTools formatting is unavailable or incomplete.
+
+**How to enable:** Open the SF Boost popup and toggle "Console Formatter" on.
+
+**How to use:** Open DevTools on an authenticated org host (`*.my.salesforce.com`, `*.lightning.force.com`, or `*.salesforce-setup.com`) and log a proxy-heavy value. SF Boost provides readable plain-object snapshots and exposes `window.SFBoostConsole.snapshot()`, `.log()`, and `.dir()` helpers.
+
+The formatter does not inject on public Salesforce properties such as `help.salesforce.com`.
 
 ---
 
@@ -241,16 +283,16 @@ You can customize Chrome extension shortcuts at `chrome://extensions/shortcuts`.
 Yes. SF Boost runs entirely in your browser. It does not send any Salesforce data to third-party servers. API calls go directly from the extension to your Salesforce org using your existing session. See the full [Privacy Policy](privacy-policy.md).
 
 **What data does it access?**
-SF Boost reads the Salesforce session cookie (`sid`) locally to authenticate API calls. It uses `chrome.storage.sync` for settings and `chrome.storage.local` for caching object describe data (1-hour TTL). No data leaves your browser.
+SF Boost reads the Salesforce session cookie (`sid`) locally to authenticate API calls. It uses `chrome.storage.sync` for module toggles, module settings, per-org UI settings, and Command Palette quick actions, plus `chrome.storage.local` for caching object describe data (1-hour TTL). No data leaves your browser.
 
 **Why are some modules disabled by default?**
 Modules that modify Salesforce data (Profile → Permission Set) or change the native UI significantly (Hide DevOps Bar) are opt-in. This ensures the extension is non-intrusive out of the box.
 
 **Does it work in Salesforce Classic?**
-Partially. Table Filter and Change Set Buddy work on Classic pages. Command Palette Setup shortcuts work in both Lightning and Classic. Field Inspector and Quick Copy are Lightning-only.
+Partially. Table Filter and Change Set Buddy work on Classic pages. Bulk Check also supports classic Setup iframes where available. Command Palette Setup shortcuts work in both Lightning and Classic. Field Inspector and Quick Copy are Lightning-only.
 
 **Can I use it in multiple orgs?**
-Yes. SF Boost works in any Salesforce org you're logged into. Environment Safeguard detects the org type automatically. Settings (module toggles) sync across your Chrome profile.
+Yes. SF Boost works in any Salesforce org you're logged into. Environment Safeguard detects the org type automatically, and global module toggles sync across your Chrome profile.
 
 **How do I report a bug or request a feature?**
 - [Report a bug](https://github.com/nocebov/sf-boost-chrome/issues/new?template=bug_report.md)
@@ -272,8 +314,13 @@ Yes. SF Boost works in any Salesforce org you're logged into. Environment Safegu
 
 **Environment badge is missing**
 - Hidden automatically on Flow Builder and App Builder pages
-- Check if `badgeEnabled` is set to `false` in your org settings
 - Module may be disabled — check the popup
+- The badge can also be turned off by per-org Environment Safeguard overrides
+
+**Console Formatter doesn't appear**
+- It only runs on authenticated org hosts such as `*.my.salesforce.com`, `*.lightning.force.com`, and `*.salesforce-setup.com`
+- It does not inject on public Salesforce properties like `help.salesforce.com`
+- Reload the tab after enabling it if the current page was opened before the module was turned on
 
 **Profile → Permission Set shows errors**
 - Ensure your user has permission to create Permission Sets in the target org

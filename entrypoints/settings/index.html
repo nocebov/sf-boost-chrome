@@ -25,7 +25,43 @@
       </div>
     </header>
 
-    <main class="modules-settings" id="modules-settings"></main>
+    <main class="settings-sections">
+      <section class="settings-section">
+        <div class="section-heading">
+          <h2>Modules</h2>
+          <p>Global module behavior toggles.</p>
+        </div>
+        <div class="modules-settings" id="modules-settings"></div>
+      </section>
+
+      <section class="settings-section">
+        <div class="section-heading">
+          <h2>Keyboard Shortcuts</h2>
+          <p>Default shortcuts for SF Boost commands. You can change them in Chrome.</p>
+        </div>
+        <div class="shortcut-card">
+          <div class="shortcut-list">
+            <div class="shortcut-row">
+              <div class="shortcut-copy">
+                <span class="shortcut-name">Command Palette</span>
+                <span class="shortcut-desc">Open quick navigation and tools</span>
+              </div>
+              <kbd class="shortcut-pill">Alt+Shift+S</kbd>
+            </div>
+            <div class="shortcut-row">
+              <div class="shortcut-copy">
+                <span class="shortcut-name">Field Inspector</span>
+                <span class="shortcut-desc">Toggle field badges on the page</span>
+              </div>
+              <kbd class="shortcut-pill">Alt+Shift+F</kbd>
+            </div>
+          </div>
+          <div class="shortcut-card-footer">
+            <button id="shortcuts-btn" class="action-button" type="button">Open Chrome shortcut settings</button>
+          </div>
+        </div>
+      </section>
+    </main>
 
     <footer class="footer">
       <p class="footer-note">Changes are saved automatically and applied on the next page load.</p>

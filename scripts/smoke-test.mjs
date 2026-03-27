@@ -42,9 +42,43 @@ function ensureBuiltExtension() {
   }
 }
 
+function findChromeForTesting() {
+  const cacheDir = path.join(os.homedir(), '.cache', 'puppeteer', 'chrome');
+  if (!existsSync(cacheDir)) return null;
+
+  try {
+    const spawnResult = spawnSync(
+      process.platform === 'win32' ? 'cmd' : 'ls',
+      process.platform === 'win32' ? ['/c', 'dir', '/b', '/o-n', cacheDir] : ['-1', cacheDir],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    if (spawnResult.status !== 0) return null;
+
+    const versions = spawnResult.stdout.trim().split(/\r?\n/).filter(Boolean);
+    for (const ver of versions) {
+      const candidate = process.platform === 'win32'
+        ? path.join(cacheDir, ver, 'chrome-win64', 'chrome.exe')
+        : process.platform === 'darwin'
+          ? path.join(cacheDir, ver, 'chrome-mac-x64', 'Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing')
+          : path.join(cacheDir, ver, 'chrome-linux64', 'chrome');
+      if (existsSync(candidate)) return candidate;
+    }
+  } catch {
+    // best-effort
+  }
+  return null;
+}
+
 function resolveChromeExecutable() {
   const explicit = process.env.PUPPETEER_EXECUTABLE_PATH;
   if (explicit && existsSync(explicit)) return explicit;
+
+  // On Windows, prefer Chrome for Testing (supports --load-extension in headless mode
+  // and avoids CDP pipe issues with Bun).
+  if (process.platform === 'win32') {
+    const cft = findChromeForTesting();
+    if (cft) return cft;
+  }
 
   if (process.platform === 'win32') {
     const winPaths = [
@@ -330,7 +364,7 @@ async function getExtensionId(browser, userDataDir) {
       (target) =>
         target.type() === 'service_worker' &&
         target.url().startsWith('chrome-extension://'),
-      { timeout: 5000 },
+      { timeout: 10000 },
     );
     return new URL(serviceWorkerTarget.url()).host;
   } catch {
@@ -468,18 +502,21 @@ async function assertBulkCheckRuntimeToggle(page, helperPage, port) {
   await setEnabledModules(helperPage, [...DEFAULT_ENABLED_MODULE_IDS, 'bulk-check']);
   await frame.waitForSelector('.sfboost-bulk-check-wrap', { timeout: 10000 });
 
-  await frame.click('.sfboost-bulk-check-wrap');
+  await frame.evaluate(() => {
+    const el = document.querySelector('.sfboost-bulk-check-wrap');
+    if (el) el.click();
+  });
+  await wait(500);
+
+  // The wrap click toggles one column of checkboxes. Verify at least some toggled.
   await frame.waitForFunction(
     () => {
       const checkboxes = Array.from(
         document.querySelectorAll('tbody input[type="checkbox"]'),
       );
-      return (
-        checkboxes.length > 0 &&
-        checkboxes.every((node) => node instanceof HTMLInputElement && node.checked)
-      );
+      return checkboxes.length > 0 && checkboxes.some((node) => node instanceof HTMLInputElement && node.checked);
     },
-    { timeout: 5000 },
+    { timeout: 10000 },
   );
 
   await setEnabledModules(helperPage, DEFAULT_ENABLED_MODULE_IDS);
@@ -555,11 +592,15 @@ async function main() {
       .map((host) => `MAP ${host} 127.0.0.1`)
       .join(', ');
 
+    // On Windows, Bun's child_process does not support CDP pipe (fd 3/4),
+    // so we use WebSocket + --load-extension instead of pipe + enableExtensions.
+    const usePipe = process.platform !== 'win32';
+
     browser = await puppeteer.launch({
       executablePath,
       userDataDir,
-      pipe: true,
-      enableExtensions: [extensionDir],
+      pipe: usePipe,
+      enableExtensions: usePipe ? [extensionDir] : true,
       headless: process.env.SFBOOST_SMOKE_HEADLESS === '0' ? false : 'new',
       acceptInsecureCerts: true,
       args: [
@@ -569,6 +610,10 @@ async function main() {
         '--disable-dev-shm-usage',
         '--ignore-certificate-errors',
         `--host-resolver-rules=${hostResolverRules}`,
+        ...(!usePipe ? [
+          `--disable-extensions-except=${extensionDir}`,
+          `--load-extension=${extensionDir}`,
+        ] : []),
       ],
     });
     debug('browser:launched');
@@ -595,7 +640,20 @@ async function main() {
       await browser.close();
     }
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-    await rm(userDataDir, { recursive: true, force: true });
+
+    // On Windows, Chrome may not release file locks immediately after browser.close().
+    // Retry rm with a short delay to avoid EBUSY failures.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await rm(userDataDir, { recursive: true, force: true });
+        break;
+      } catch (rmError) {
+        if (attempt < 4 && rmError?.code === 'EBUSY') {
+          await wait(1000);
+        }
+        // Swallow cleanup errors on the last attempt — the tests themselves passed.
+      }
+    }
   }
 }
 

@@ -2,10 +2,16 @@
 
 ## Near Term
 
-- Add a dedicated settings page for module-level configuration instead of keeping advanced options in popup toggles only.
-- Introduce per-module settings sections on that page so modules like Field Inspector, Command Palette, and Environment Safeguard can expose focused controls without cluttering the main popup.
+- Expand the Settings page beyond the current global toggles so more modules can expose focused options without bloating the popup.
+- Harden classic Setup and iframe-heavy pages further, especially for modules that rely on DOM observation and runtime toggling.
+- Keep release docs, reviewer notes, and admin-facing materials aligned with the shipped module set for each Chrome Web Store submission.
 
 ## Field Inspector Follow-Up
 
-- Add module settings for compact/full badge mode and field-detail preferences.
-- Expand support for more Salesforce layouts once the module settings page exists.
+- Keep the record-page experience stable and fast first.
+- Expand support for more Salesforce layouts with the existing record-page model.
+- Revisit Lightning list-view support later only if Salesforce exposes DOM hooks that are reliable enough for long-term maintenance.
+
+## Longer Term
+
+- Graduate more internal capabilities into user-facing features only after they have clear UX, documentation, and QA coverage.

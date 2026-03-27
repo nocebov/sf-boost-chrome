@@ -1,5 +1,6 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
+import { getModuleSettings, type ModuleSettings } from '../../lib/storage';
 import { tokens } from '../../lib/design-tokens';
 
 const DATA_ATTR = 'data-sfboost-table-filter';
@@ -11,9 +12,9 @@ const AUTO_HYDRATE_MAX_ROWS = 2000;
 const OBJECT_MANAGER_FIELDS_PATTERN = /\/lightning\/setup\/ObjectManager\/\w+\/FieldsAndRelationships\/view/i;
 const HYDRATE_STEP_DELAY_MS = 120;
 const HYDRATE_MAX_STEPS = 120;
+const HYDRATE_STABLE_BOTTOM_PASSES = 4;
 const SCROLLABLE_OVERFLOWS = new Set(['auto', 'overlay', 'scroll']);
 const PROGRESSIVE_REFILTER_INTERVAL_MS = 200;
-const WARMUP_DELAY_MS = 500;
 
 let observer: MutationObserver | null = null;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
@@ -22,6 +23,8 @@ let rowTextCache = new WeakMap<HTMLTableRowElement, string>();
 let tableStates = new WeakMap<HTMLTableElement, TableState>();
 let lifecycleToken = 0;
 const activeDebounces = new Set<ReturnType<typeof setTimeout>>();
+let tableFilterSettings: ModuleSettings = {};
+let mutedObserverMutations = 0;
 
 // --- Table Detection ---
 
@@ -35,6 +38,13 @@ interface HydrationState {
   completed: boolean;
 }
 
+interface TableLoadSnapshot {
+  loaded: number;
+  expected: number | null;
+  frontier: number;
+  leadingNonDataRows: number;
+}
+
 interface TableState {
   activeQuery: string;
   clearBtn: HTMLButtonElement;
@@ -44,6 +54,14 @@ interface TableState {
   hydration: HydrationState | null;
   requestSeq: number;
   rowsHydrated: boolean;
+  // Pre-computed on injection to speed up first keystroke
+  isLightningGrid: boolean;
+  cachedExpectedRowCount: number | null;
+  cachedScrollContainer: HTMLElement | null;
+  deferLiveFiltering: boolean;
+  searchIndex: Map<string, string>;
+  maxSeenFrontier: number;
+  hydrationStalledFrontier: number | null;
 }
 
 interface FilterUIResult {
@@ -117,6 +135,69 @@ function getScrollableAncestor(table: HTMLTableElement, allowViewportFallback: b
   }
 
   return null;
+}
+
+function isUsableScrollContainer(value: HTMLElement | null): value is HTMLElement {
+  return value instanceof HTMLElement
+    && value.isConnected
+    && value.scrollHeight > value.clientHeight + 24;
+}
+
+function resolveScrollContainer(
+  table: HTMLTableElement,
+  cachedScrollContainer: HTMLElement | null,
+  allowViewportFallback: boolean,
+): HTMLElement | null {
+  if (isUsableScrollContainer(cachedScrollContainer)) {
+    return cachedScrollContainer;
+  }
+
+  return getScrollableAncestor(table, allowViewportFallback);
+}
+
+function withObserverMuted<T>(fn: () => T): T {
+  mutedObserverMutations += 1;
+  try {
+    return fn();
+  } finally {
+    window.setTimeout(() => {
+      mutedObserverMutations = Math.max(0, mutedObserverMutations - 1);
+    }, 0);
+  }
+}
+
+function getNodeElement(node: Node | null): HTMLElement | null {
+  if (node instanceof HTMLElement) return node;
+  return node instanceof Text ? node.parentElement : null;
+}
+
+function isFilterUiNode(node: Node | null): boolean {
+  return Boolean(getNodeElement(node)?.closest(`.${CONTAINER_CLASS}`));
+}
+
+function unwrapElementPreservingText(element: Element): void {
+  const parent = element.parentNode;
+  if (!parent) return;
+
+  while (element.firstChild) {
+    parent.insertBefore(element.firstChild, element);
+  }
+
+  parent.removeChild(element);
+  parent.normalize();
+}
+
+function stripManagedMarkup(root: ParentNode): void {
+  root.querySelectorAll('[class*="sfboost-"]').forEach(element => {
+    if (!(element instanceof HTMLElement)) return;
+
+    if (element.classList.contains(HIGHLIGHT_CLASS)) {
+      unwrapElementPreservingText(element);
+      return;
+    }
+
+    element.remove();
+  });
 }
 
 // --- Hydration Mask ---
@@ -289,6 +370,7 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
 
   const progressBar = createProgressBar();
 
+  const isGrid = isLightningGridTable(table);
   const state: TableState = {
     activeQuery: '',
     clearBtn,
@@ -298,6 +380,13 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
     hydration: null,
     requestSeq: 0,
     rowsHydrated: false,
+    isLightningGrid: isGrid,
+    cachedExpectedRowCount: isGrid ? getExpectedRowCount(table) : null,
+    cachedScrollContainer: isGrid ? getScrollableAncestor(table, false) : null,
+    deferLiveFiltering: false,
+    searchIndex: new Map(),
+    maxSeenFrontier: 0,
+    hydrationStalledFrontier: null,
   };
 
   let debounce: ReturnType<typeof setTimeout> | null = null;
@@ -369,16 +458,37 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
         loadAllBtn.style.cursor = 'default';
         loadAllBtn.textContent = 'Loading...';
 
-        void startHydration(table, state, true).then(() => {
+        void startHydration(table, state, true, false, true).then(() => {
           const liveState = tableStates.get(table);
           if (liveState !== state || !table.isConnected) return;
-          loadAllBtn.textContent = 'All loaded';
-          loadAllBtn.style.color = tokens.color.success;
-          loadAllBtn.style.borderColor = tokens.color.success;
+
+          const snapshot = syncSearchIndex(table, state);
+          const trackedFrontier = getTrackedFrontier(state, snapshot);
+          const fullyLoaded = snapshot.expected != null
+            ? trackedFrontier >= snapshot.expected
+            : state.rowsHydrated;
+
+          if (fullyLoaded) {
+            loadAllBtn.textContent = 'All loaded';
+            loadAllBtn.style.color = tokens.color.success;
+            loadAllBtn.style.borderColor = tokens.color.success;
+          } else {
+            loadAllBtn.disabled = false;
+            loadAllBtn.style.opacity = '1';
+            loadAllBtn.style.cursor = 'pointer';
+            loadAllBtn.textContent = 'Retry Load';
+            loadAllBtn.style.color = tokens.color.primary;
+            loadAllBtn.style.borderColor = tokens.color.borderInput;
+          }
+
           updateCount(table, count, state.activeQuery);
 
           if (state.activeQuery.trim()) {
-            applyFilterToLoadedRows(table, state.activeQuery, count);
+            if (state.deferLiveFiltering) {
+              resetFilterPresentation(table);
+            } else {
+              applyFilterToLoadedRows(table, state.activeQuery, count);
+            }
           }
         });
       });
@@ -397,10 +507,10 @@ function createFilterUI(table: HTMLTableElement): FilterUIResult {
 function getBodyRows(table: HTMLTableElement): HTMLTableRowElement[] {
   const tbody = table.querySelector('tbody');
   if (tbody) {
-    return Array.from(tbody.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
+    return Array.from(tbody.querySelectorAll<HTMLTableRowElement>(`:scope > tr:not(.${NO_MATCH_CLASS})`));
   }
 
-  const allRows = Array.from(table.querySelectorAll<HTMLTableRowElement>(':scope > tr'));
+  const allRows = Array.from(table.querySelectorAll<HTMLTableRowElement>(`:scope > tr:not(.${NO_MATCH_CLASS})`));
   return allRows.slice(1);
 }
 
@@ -431,23 +541,127 @@ function getExpectedRowCount(table: HTMLTableElement): number | null {
   return adjusted > 0 ? adjusted : rawRowCount;
 }
 
+function getTableLoadSnapshot(table: HTMLTableElement): TableLoadSnapshot {
+  const rows = getBodyRows(table);
+  const loaded = rows.length;
+  const expected = getExpectedRowCount(table);
+
+  const rowIndexes = rows
+    .map(row => parsePositiveInt(row.getAttribute('aria-rowindex')))
+    .filter((value): value is number => value != null);
+
+  const leadingNonDataRows = rowIndexes.length > 0
+    ? Math.max(0, Math.min(...rowIndexes) - 1)
+    : 0;
+
+  const maxAdjustedRowIndex = rowIndexes.length > 0
+    ? Math.max(0, Math.max(...rowIndexes) - leadingNonDataRows)
+    : loaded;
+
+  return {
+    loaded,
+    expected,
+    frontier: Math.max(loaded, maxAdjustedRowIndex),
+    leadingNonDataRows,
+  };
+}
+
+function getTrackedFrontier(state: TableState, snapshot?: TableLoadSnapshot): number {
+  return Math.max(snapshot?.frontier ?? 0, state.maxSeenFrontier, state.searchIndex.size);
+}
+
+function getRowSearchKey(row: HTMLTableRowElement, leadingNonDataRows: number): string | null {
+  const rawIndex = parsePositiveInt(row.getAttribute('aria-rowindex'));
+  if (rawIndex != null) {
+    return `idx:${Math.max(1, rawIndex - leadingNonDataRows)}`;
+  }
+
+  const rowKey = row.getAttribute('data-row-key-value')
+    ?? row.getAttribute('data-row-key')
+    ?? row.id
+    ?? '';
+  if (rowKey) return `key:${rowKey}`;
+
+  const primaryLink = row.querySelector<HTMLAnchorElement>('a[href]');
+  if (primaryLink?.href) return `href:${primaryLink.href}`;
+
+  return null;
+}
+
+function syncSearchIndex(table: HTMLTableElement, state: TableState): TableLoadSnapshot {
+  const snapshot = getTableLoadSnapshot(table);
+
+  if (snapshot.expected != null) {
+    state.cachedExpectedRowCount = snapshot.expected;
+  }
+  state.maxSeenFrontier = Math.max(state.maxSeenFrontier, snapshot.frontier);
+
+  if (state.hydrationStalledFrontier != null && getTrackedFrontier(state, snapshot) > state.hydrationStalledFrontier) {
+    state.hydrationStalledFrontier = null;
+  }
+
+  for (const row of getBodyRows(table)) {
+    const key = getRowSearchKey(row, snapshot.leadingNonDataRows);
+    if (!key) continue;
+    state.searchIndex.set(key, getRowText(row));
+  }
+
+  return snapshot;
+}
+
+function countIndexedMatches(state: TableState, query: string): number {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return getTrackedFrontier(state);
+
+  const terms = trimmed.split(/\s+/).filter(Boolean);
+  let matches = 0;
+
+  for (const text of state.searchIndex.values()) {
+    if (terms.every(term => text.includes(term))) {
+      matches += 1;
+    }
+  }
+
+  return matches;
+}
+
 function getRowText(row: HTMLTableRowElement): string {
   let text = rowTextCache.get(row);
   if (text == null) {
     const clone = row.cloneNode(true) as HTMLTableRowElement;
-    clone.querySelectorAll('[class*="sfboost-"]').forEach(el => el.remove());
+    stripManagedMarkup(clone);
     text = (clone.textContent ?? '').toLowerCase();
     rowTextCache.set(row, text);
   }
   return text;
 }
 
-function shouldHydrateRows(table: HTMLTableElement, state: TableState): boolean {
-  if (!isLightningGridTable(table)) return false;
+function shouldHydrateRows(
+  table: HTMLTableElement,
+  state: TableState,
+  options?: { force?: boolean },
+): boolean {
+  if (tableFilterSettings.autoLoadLazyRows === false) return false;
+  if (!state.isLightningGrid) return false;
 
-  const expected = getExpectedRowCount(table);
-  const loaded = getBodyRows(table).length;
-  if (expected != null) return loaded < expected;
+  const snapshot = getTableLoadSnapshot(table);
+  if (snapshot.expected != null) {
+    state.cachedExpectedRowCount = snapshot.expected;
+  }
+
+  const trackedFrontier = getTrackedFrontier(state, snapshot);
+  const expected = snapshot.expected ?? state.cachedExpectedRowCount;
+  if (expected != null && trackedFrontier >= expected) {
+    state.rowsHydrated = true;
+    state.hydrationStalledFrontier = null;
+    return false;
+  }
+
+  if (!options?.force && state.hydrationStalledFrontier != null && trackedFrontier <= state.hydrationStalledFrontier) {
+    return false;
+  }
+
+  if (expected != null) return trackedFrontier < expected;
 
   return !state.rowsHydrated;
 }
@@ -524,37 +738,50 @@ function hideNoMatchMessage(table: HTMLTableElement): void {
   table.querySelectorAll(`.${NO_MATCH_CLASS}`).forEach(el => el.remove());
 }
 
+function resetFilterPresentation(table: HTMLTableElement): void {
+  withObserverMuted(() => {
+    clearHighlights(table);
+    hideNoMatchMessage(table);
+    getBodyRows(table).forEach(row => {
+      row.style.display = '';
+    });
+  });
+}
+
 function applyFilterToLoadedRows(table: HTMLTableElement, query: string, countEl: HTMLElement): void {
   const trimmed = query.trim().toLowerCase();
   const terms = trimmed.split(/\s+/).filter(Boolean);
   const rows = getBodyRows(table);
 
-  clearHighlights(table);
-  hideNoMatchMessage(table);
+  withObserverMuted(() => {
+    clearHighlights(table);
+    hideNoMatchMessage(table);
 
-  let visible = 0;
-  for (const row of rows) {
-    if (terms.length === 0) {
-      row.style.display = '';
-      visible++;
-      continue;
+    let visible = 0;
+    for (const row of rows) {
+      if (terms.length === 0) {
+        row.style.display = '';
+        visible++;
+        continue;
+      }
+
+      const text = getRowText(row);
+      const match = terms.every(term => text.includes(term));
+      row.style.display = match ? '' : 'none';
+      if (match) visible++;
     }
 
-    const text = getRowText(row);
-    const match = terms.every(term => text.includes(term));
-    row.style.display = match ? '' : 'none';
-    if (match) visible++;
-  }
-
-  if (terms.length > 0 && visible === 0) {
-    const state = tableStates.get(table);
-    // Only show "no matches" if hydration is done or not needed
-    if (!state?.hydration || state.hydration.completed) {
-      showNoMatchMessage(table);
+    if (terms.length > 0 && visible === 0) {
+      const state = tableStates.get(table);
+      // Only show "no matches" if hydration is done or not needed
+      if (!state?.hydration || state.hydration.completed) {
+        showNoMatchMessage(table);
+      }
     }
-  }
 
-  highlightMatches(table, terms);
+    highlightMatches(table, terms);
+  });
+
   updateCount(table, countEl, trimmed);
 }
 
@@ -565,15 +792,18 @@ async function hydrateRowsSilently(
   allowViewportFallback: boolean,
   expectedAtStart: number | null,
   tokenAtStart: number,
-  onProgress?: (loaded: number, expected: number | null) => void,
+  onProgress?: (frontier: number, expected: number | null) => void,
+  cachedScrollContainer?: HTMLElement | null,
+  suppressMask?: boolean,
 ): Promise<boolean> {
-  const scrollContainer = getScrollableAncestor(table, allowViewportFallback);
+  const scrollContainer = resolveScrollContainer(table, cachedScrollContainer ?? null, allowViewportFallback);
   if (!scrollContainer) return false;
 
   const originalScrollTop = scrollContainer.scrollTop;
-  const needsMask = getBodyRows(table).length < (expectedAtStart ?? Infinity);
+  const initialSnapshot = getTableLoadSnapshot(table);
+  const needsMask = !suppressMask && initialSnapshot.frontier < (expectedAtStart ?? Infinity);
 
-  // Create visual mask to hide scroll jumps
+  // Create visual mask to hide scroll jumps (suppressed during active filtering)
   let mask: HTMLDivElement | null = null;
   let rafId: number | null = null;
 
@@ -590,7 +820,7 @@ async function hydrateRowsSilently(
     rafId = requestAnimationFrame(updateMask);
   }
 
-  let lastCount = getBodyRows(table).length;
+  let lastFrontier = initialSnapshot.frontier;
   let stableBottomPasses = 0;
   let didScroll = false;
 
@@ -613,25 +843,26 @@ async function hydrateRowsSilently(
 
       await wait(HYDRATE_STEP_DELAY_MS);
 
-      const currentCount = getBodyRows(table).length;
-      const expected = getExpectedRowCount(table) ?? expectedAtStart;
-      if (expected != null && currentCount >= expected) {
-        if (currentCount > lastCount) {
-          onProgress?.(currentCount, expected);
+      const snapshot = getTableLoadSnapshot(table);
+      const currentFrontier = snapshot.frontier;
+      const expected = snapshot.expected ?? expectedAtStart;
+      if (expected != null && currentFrontier >= expected) {
+        if (currentFrontier > lastFrontier) {
+          onProgress?.(currentFrontier, expected);
         }
         break;
       }
 
       const reachedBottom = scrollContainer.scrollTop >= maxScrollTop - 2;
-      if (currentCount > lastCount) {
-        lastCount = currentCount;
+      if (currentFrontier > lastFrontier) {
+        lastFrontier = currentFrontier;
         stableBottomPasses = 0;
-        onProgress?.(currentCount, expected);
+        onProgress?.(currentFrontier, expected);
         continue;
       }
 
       stableBottomPasses = reachedBottom ? stableBottomPasses + 1 : 0;
-      if (reachedBottom && stableBottomPasses >= 2) break;
+      if (reachedBottom && stableBottomPasses >= HYDRATE_STABLE_BOTTOM_PASSES) break;
     }
   } finally {
     // Always restore scroll position and clean up mask
@@ -650,8 +881,10 @@ function startHydration(
   table: HTMLTableElement,
   state: TableState,
   allowViewportFallback: boolean,
+  suppressMask?: boolean,
+  force?: boolean,
 ): Promise<void> {
-  if (!shouldHydrateRows(table, state)) return Promise.resolve();
+  if (!shouldHydrateRows(table, state, { force })) return Promise.resolve();
 
   // Reuse existing hydration
   if (state.hydration && !state.hydration.completed) {
@@ -659,7 +892,10 @@ function startHydration(
   }
 
   const tokenAtStart = lifecycleToken;
-  const expectedAtStart = getExpectedRowCount(table);
+  const initialSnapshot = syncSearchIndex(table, state);
+  const expectedAtStart = initialSnapshot.expected ?? state.cachedExpectedRowCount;
+  state.hydrationStalledFrontier = null;
+  state.cachedScrollContainer = resolveScrollContainer(table, state.cachedScrollContainer, allowViewportFallback);
 
   const onNewRows = new Set<() => void>();
 
@@ -671,15 +907,16 @@ function startHydration(
   state.hydration = hydrationState;
 
   // Show progress bar
-  updateProgressBar(state.progressBar, 0, expectedAtStart);
+  updateProgressBar(state.progressBar, getTrackedFrontier(state, initialSnapshot), expectedAtStart);
   state.progressBar.style.opacity = '1';
 
-  const onProgress = (loaded: number, expected: number | null) => {
+  const onProgress = (frontier: number, expected: number | null) => {
     if (tokenAtStart !== lifecycleToken || !table.isConnected) return;
 
-    // Invalidate text cache for new rows (they weren't in cache anyway)
+    const snapshot = syncSearchIndex(table, state);
+
     // Update progress bar
-    updateProgressBar(state.progressBar, loaded, expected);
+    updateProgressBar(state.progressBar, Math.max(frontier, getTrackedFrontier(state, snapshot)), expected ?? snapshot.expected);
 
     // Update count display
     if (state.activeQuery.trim()) {
@@ -695,21 +932,34 @@ function startHydration(
   };
 
   const promise = (async () => {
-    const didScroll = await hydrateRowsSilently(table, allowViewportFallback, expectedAtStart, tokenAtStart, onProgress);
+    const didScroll = await hydrateRowsSilently(
+      table,
+      allowViewportFallback,
+      expectedAtStart,
+      tokenAtStart,
+      onProgress,
+      state.cachedScrollContainer,
+      suppressMask,
+    );
     if (tokenAtStart !== lifecycleToken || !table.isConnected) return;
 
-    const expected = getExpectedRowCount(table);
-    const loaded = getBodyRows(table).length;
+    const snapshot = syncSearchIndex(table, state);
+    const expected = snapshot.expected ?? state.cachedExpectedRowCount;
+    const trackedFrontier = getTrackedFrontier(state, snapshot);
     if (expected != null) {
-      state.rowsHydrated = loaded >= expected;
+      state.rowsHydrated = trackedFrontier >= expected;
     } else if (didScroll) {
       state.rowsHydrated = true;
+    }
+
+    if (!state.rowsHydrated) {
+      state.hydrationStalledFrontier = trackedFrontier;
     }
 
     hydrationState.completed = true;
 
     // Final progress update
-    updateProgressBar(state.progressBar, loaded, expected);
+    updateProgressBar(state.progressBar, trackedFrontier, expected);
 
     // Fade out progress bar
     setTimeout(() => {
@@ -753,15 +1003,23 @@ async function runFilter(table: HTMLTableElement, query: string): Promise<void> 
   state.requestSeq += 1;
   const requestSeq = state.requestSeq;
   const trimmed = query.trim();
+  const normalizedQuery = trimmed.toLowerCase();
   state.clearBtn.style.display = trimmed ? 'block' : 'none';
+  syncSearchIndex(table, state);
 
-  // 1. Immediately filter whatever rows are loaded right now
-  applyFilterToLoadedRows(table, query, state.countEl);
+  const needsHydration = Boolean(trimmed) && shouldHydrateRows(table, state);
+  state.deferLiveFiltering = needsHydration && state.isLightningGrid;
+
+  if (state.deferLiveFiltering) {
+    resetFilterPresentation(table);
+    updateCount(table, state.countEl, normalizedQuery);
+  } else {
+    applyFilterToLoadedRows(table, query, state.countEl);
+  }
 
   // 2. If rows need loading, start hydration (no-op if already running) and register progressive callback
-  if (trimmed && shouldHydrateRows(table, state)) {
-    // Ensure hydration is running
-    void startHydration(table, state, true);
+  if (needsHydration) {
+    const hydrationPromise = startHydration(table, state, true, true);
 
     // Register progressive re-filter callback
     if (state.hydration && !state.hydration.completed) {
@@ -779,27 +1037,69 @@ async function runFilter(table: HTMLTableElement, query: string): Promise<void> 
         if (now - lastRefilterTime < PROGRESSIVE_REFILTER_INTERVAL_MS) return;
         lastRefilterTime = now;
 
-        applyFilterToLoadedRows(table, query, state.countEl);
+        syncSearchIndex(table, state);
+        if (state.deferLiveFiltering) {
+          updateCount(table, state.countEl, normalizedQuery);
+        } else {
+          applyFilterToLoadedRows(table, query, state.countEl);
+        }
       };
 
       state.hydration.onNewRows.add(progressiveRefilter);
     }
+
+    void hydrationPromise.then(() => {
+      const liveState = tableStates.get(table);
+      if (liveState !== state || state.requestSeq !== requestSeq || !table.isConnected) return;
+
+      const snapshot = syncSearchIndex(table, state);
+      const expected = snapshot.expected ?? state.cachedExpectedRowCount;
+      const trackedFrontier = getTrackedFrontier(state, snapshot);
+      const fullyLoaded = expected != null ? trackedFrontier >= expected : state.rowsHydrated;
+
+      if (!fullyLoaded) {
+        state.deferLiveFiltering = true;
+        resetFilterPresentation(table);
+        updateCount(table, state.countEl, normalizedQuery);
+        return;
+      }
+
+      state.deferLiveFiltering = false;
+      applyFilterToLoadedRows(table, query, state.countEl);
+    });
   }
 }
 
 function updateCount(table: HTMLTableElement, countEl: HTMLElement, query: string): void {
-  const rows = getBodyRows(table);
-  const loaded = rows.length;
-  const expected = getExpectedRowCount(table);
   const state = tableStates.get(table);
+  const rows = getBodyRows(table);
+  const snapshot = getTableLoadSnapshot(table);
+  const loaded = snapshot.loaded;
+  const expected = snapshot.expected ?? state?.cachedExpectedRowCount ?? null;
   const isHydrating = state?.hydration && !state.hydration.completed;
+  const trackedFrontier = state ? getTrackedFrontier(state, snapshot) : snapshot.frontier;
+  const displayedFrontier = expected != null ? Math.min(trackedFrontier, expected) : trackedFrontier;
   const partiallyLoaded = expected != null && loaded < expected;
 
   if (!query) {
     if (isHydrating && expected != null) {
-      countEl.textContent = `Loading ${loaded} / ${expected}...`;
+      countEl.textContent = `Loading ${displayedFrontier} / ${expected}...`;
     } else {
       countEl.textContent = partiallyLoaded ? `${loaded} / ${expected} loaded` : `${loaded} rows`;
+    }
+    return;
+  }
+
+  if (state?.deferLiveFiltering) {
+    const matches = countIndexedMatches(state, query);
+    if (expected != null) {
+      countEl.textContent = isHydrating
+        ? `${matches} matches (scanning ${displayedFrontier}/${expected}...)`
+        : `${matches} matches (${displayedFrontier}/${expected} scanned)`;
+    } else {
+      countEl.textContent = isHydrating
+        ? `${matches} matches (scanning ${displayedFrontier}...)`
+        : `${matches} matches`;
     }
     return;
   }
@@ -816,52 +1116,21 @@ function isObjectManagerFieldsPage(): boolean {
   return OBJECT_MANAGER_FIELDS_PATTERN.test(window.location.pathname);
 }
 
-function maybeWarmupTable(table: HTMLTableElement): void {
-  const state = tableStates.get(table);
-  if (!state || state.activeQuery.trim()) return;
-  if (state.hydration && !state.hydration.completed) return; // already hydrating
-  if (!isLightningGridTable(table)) return;
-
-  const expected = getExpectedRowCount(table);
-  // Auto-hydrate tables up to AUTO_HYDRATE_MAX_ROWS (2000)
-  if (expected != null && expected > AUTO_HYDRATE_MAX_ROWS) return;
-  if (expected != null && getBodyRows(table).length >= expected) {
-    state.rowsHydrated = true;
-    return;
-  }
-
-  if (!getScrollableAncestor(table, false)) return;
-
-  // Delay warmup slightly to let Salesforce finish initial rendering
-  setTimeout(() => {
-    const liveState = tableStates.get(table);
-    if (liveState !== state || !table.isConnected) return;
-    if (state.hydration && !state.hydration.completed) return;
-
-    void startHydration(table, state, false).then(() => {
-      const ls = tableStates.get(table);
-      if (ls !== state || !table.isConnected) return;
-
-      if (state.activeQuery.trim()) {
-        void runFilter(table, state.activeQuery);
-        return;
-      }
-
-      updateCount(table, state.countEl, '');
-    });
-  }, WARMUP_DELAY_MS);
-}
-
 function refreshManagedTables(): void {
   document.querySelectorAll<HTMLTableElement>(`table[${DATA_ATTR}]`).forEach(table => {
     const state = tableStates.get(table);
     if (!state) return;
 
+    syncSearchIndex(table, state);
     const isHydrating = state.hydration && !state.hydration.completed;
 
     if (isHydrating) {
       if (state.activeQuery.trim()) {
-        applyFilterToLoadedRows(table, state.activeQuery, state.countEl);
+        if (state.deferLiveFiltering) {
+          updateCount(table, state.countEl, state.activeQuery.trim().toLowerCase());
+        } else {
+          applyFilterToLoadedRows(table, state.activeQuery, state.countEl);
+        }
       } else {
         updateCount(table, state.countEl, '');
       }
@@ -869,16 +1138,25 @@ function refreshManagedTables(): void {
     }
 
     if (state.activeQuery.trim()) {
+      if (state.deferLiveFiltering) {
+        if (shouldHydrateRows(table, state)) {
+          void runFilter(table, state.activeQuery);
+        } else {
+          updateCount(table, state.countEl, state.activeQuery.trim().toLowerCase());
+        }
+        return;
+      }
+
       if (shouldHydrateRows(table, state)) {
         void runFilter(table, state.activeQuery);
       } else {
+        state.deferLiveFiltering = false;
         applyFilterToLoadedRows(table, state.activeQuery, state.countEl);
       }
       return;
     }
 
     updateCount(table, state.countEl, '');
-    maybeWarmupTable(table);
   });
 }
 
@@ -922,6 +1200,12 @@ function autoExpandClassicPagination(): void {
   }
 }
 
+function shouldRunOnPage(pageType: ModuleContext['pageContext']['pageType']): boolean {
+  if (pageType === 'setup') return tableFilterSettings.showOnSetupPages !== false;
+  if (pageType === 'list') return tableFilterSettings.showOnListViews !== false;
+  return false;
+}
+
 // --- Injection ---
 
 function injectFilter(detected: DetectedTable): void {
@@ -935,8 +1219,6 @@ function injectFilter(detected: DetectedTable): void {
   if (parent) {
     parent.insertBefore(container, table);
   }
-
-  maybeWarmupTable(table);
 }
 
 function scanAndInject(): void {
@@ -950,27 +1232,39 @@ function scanAndInject(): void {
 function startObserver(): void {
   if (observer) observer.disconnect();
   observer = new MutationObserver((mutations) => {
+    if (mutedObserverMutations > 0) return;
+
+    let shouldRescan = false;
+
     // Targeted cache invalidation — only invalidate rows affected by mutations
     for (const mutation of mutations) {
-      const target = mutation.target;
-      if (target instanceof HTMLElement) {
+      if (isFilterUiNode(mutation.target)) continue;
+
+      const target = getNodeElement(mutation.target);
+      if (target) {
         const row = target.closest('tr');
         if (row instanceof HTMLTableRowElement) {
           rowTextCache.delete(row);
         }
+        shouldRescan = true;
       }
+
       // Also invalidate for added/removed nodes
-      for (const node of mutation.addedNodes) {
-        if (node instanceof HTMLElement) {
-          const row = node.closest('tr');
+      for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+        if (isFilterUiNode(node)) continue;
+
+        const element = getNodeElement(node);
+        if (element) {
+          const row = element.closest('tr');
           if (row instanceof HTMLTableRowElement) {
             rowTextCache.delete(row);
           }
         }
+        shouldRescan = true;
       }
     }
 
-    if (!scanTimer) {
+    if (shouldRescan && !scanTimer) {
       scanTimer = setTimeout(() => {
         scanTimer = null;
         scanAndInject();
@@ -1022,10 +1316,13 @@ const tableFilter: SFBoostModule = {
   description: 'Quick search/filter for Salesforce tables',
 
   async init(ctx: ModuleContext) {
+    tableFilterSettings = await getModuleSettings('table-filter');
     const { pageType } = ctx.pageContext;
     initTimer = setTimeout(() => {
-      autoExpandClassicPagination();
-      if (pageType === 'setup' || pageType === 'list') {
+      if (tableFilterSettings.autoExpandClassicPagination !== false) {
+        autoExpandClassicPagination();
+      }
+      if (shouldRunOnPage(pageType)) {
         scanAndInject();
         startObserver();
       }
@@ -1035,6 +1332,7 @@ const tableFilter: SFBoostModule = {
   async onNavigate(ctx: ModuleContext) {
     removeAllFilters();
     stopObserver();
+    tableFilterSettings = await getModuleSettings('table-filter');
     if (initTimer) {
       clearTimeout(initTimer);
       initTimer = null;
@@ -1042,8 +1340,10 @@ const tableFilter: SFBoostModule = {
 
     const { pageType } = ctx.pageContext;
     initTimer = setTimeout(() => {
-      autoExpandClassicPagination();
-      if (pageType === 'setup' || pageType === 'list') {
+      if (tableFilterSettings.autoExpandClassicPagination !== false) {
+        autoExpandClassicPagination();
+      }
+      if (shouldRunOnPage(pageType)) {
         scanAndInject();
         startObserver();
       }

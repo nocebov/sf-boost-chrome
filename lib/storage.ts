@@ -52,6 +52,79 @@ export interface OrgSettings {
   badgeLabel?: string;
 }
 
+export interface ResolvedOrgSettings {
+  key: string;
+  matchedKey: string | null;
+  settings: OrgSettings;
+}
+
+const ORG_SETTING_BOOLEAN_KEYS = ['showBanner', 'badgeEnabled'] as const;
+const ORG_SETTING_STRING_KEYS = [
+  'label',
+  'bannerColor',
+  'bannerTextColor',
+  'badgeColor',
+  'badgeTextColor',
+  'badgeLabel',
+] as const;
+
+function normalizeOrgSettings(value: unknown): OrgSettings {
+  if (!value || typeof value !== 'object') return {};
+
+  const source = value as Record<string, unknown>;
+  const result: OrgSettings = {};
+
+  for (const key of ORG_SETTING_BOOLEAN_KEYS) {
+    if (typeof source[key] === 'boolean') {
+      result[key] = source[key] as boolean;
+    }
+  }
+
+  for (const key of ORG_SETTING_STRING_KEYS) {
+    if (typeof source[key] === 'string') {
+      const normalized = source[key].trim();
+      if (normalized) {
+        result[key] = normalized;
+      }
+    }
+  }
+
+  return result;
+}
+
+function hasOwn<T extends object>(value: T, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function applyOrgSettingsUpdate(
+  existingRaw: Record<string, unknown>,
+  updates: OrgSettings,
+): Record<string, unknown> {
+  const next = { ...existingRaw };
+
+  for (const key of ORG_SETTING_BOOLEAN_KEYS) {
+    if (!hasOwn(updates, key)) continue;
+    const value = updates[key];
+    if (typeof value === 'boolean') {
+      next[key] = value;
+    } else {
+      delete next[key];
+    }
+  }
+
+  for (const key of ORG_SETTING_STRING_KEYS) {
+    if (!hasOwn(updates, key)) continue;
+    const value = updates[key];
+    if (typeof value === 'string' && value.trim()) {
+      next[key] = value.trim();
+    } else {
+      delete next[key];
+    }
+  }
+
+  return next;
+}
+
 export async function getEnabledModules(): Promise<string[]> {
   const result = await chrome.storage.sync.get('enabledModules');
   return normalizeEnabledModuleIds(result.enabledModules);
@@ -64,14 +137,45 @@ export async function setEnabledModules(ids: string[]): Promise<void> {
 export async function getOrgSettings(domain: string): Promise<OrgSettings> {
   const result = await chrome.storage.sync.get('orgSettings');
   const all = (result.orgSettings as Record<string, OrgSettings> | undefined) ?? {};
-  return all[domain] ?? {};
+  return normalizeOrgSettings(all[domain]);
 }
 
 export async function setOrgSettings(domain: string, settings: OrgSettings): Promise<void> {
   const result = await chrome.storage.sync.get('orgSettings');
-  const all = (result.orgSettings as Record<string, OrgSettings> | undefined) ?? {};
-  all[domain] = { ...all[domain], ...settings };
+  const all = (result.orgSettings as Record<string, Record<string, unknown>> | undefined) ?? {};
+  const existing = all[domain] && typeof all[domain] === 'object' ? all[domain] : {};
+  all[domain] = applyOrgSettingsUpdate(existing, settings);
   await chrome.storage.sync.set({ orgSettings: all });
+}
+
+export async function getResolvedOrgSettings(
+  key: string,
+  fallbackKeys: string[] = [],
+): Promise<ResolvedOrgSettings> {
+  const result = await chrome.storage.sync.get('orgSettings');
+  const all = (result.orgSettings as Record<string, unknown> | undefined) ?? {};
+
+  const candidateKeys = [key, ...fallbackKeys].filter(Boolean);
+  const seen = new Set<string>();
+
+  for (const candidateKey of candidateKeys) {
+    if (seen.has(candidateKey)) continue;
+    seen.add(candidateKey);
+
+    if (hasOwn(all, candidateKey)) {
+      return {
+        key,
+        matchedKey: candidateKey,
+        settings: normalizeOrgSettings(all[candidateKey]),
+      };
+    }
+  }
+
+  return {
+    key,
+    matchedKey: null,
+    settings: {},
+  };
 }
 
 // Command Palette quick action customization

@@ -1,6 +1,8 @@
 # SF Boost Support
 
-Last updated: March 14, 2026
+Last updated: March 27, 2026
+
+This support note applies to the current `0.7.0` release line.
 
 ## Support channels
 
@@ -20,6 +22,7 @@ Last updated: March 14, 2026
 - Steps to reproduce.
 - Expected result and actual result.
 - Browser version and SF Boost version.
+- Whether the issue still reproduces after a page reload or after toggling the module off and back on.
 
 ## Enterprise rollout note
 

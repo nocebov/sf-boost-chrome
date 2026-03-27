@@ -1,6 +1,6 @@
 # SF Boost — Privacy Policy
 
-**Last updated: March 26, 2026**
+**Last updated: March 27, 2026**
 
 SF Boost ("the extension") is a Chrome browser extension for Salesforce administrators and developers. Its sole purpose is to improve day-to-day productivity within the native Salesforce user interface. The extension runs entirely inside the user's browser and communicates only with the Salesforce org the user already has open.
 
@@ -37,6 +37,7 @@ When the optional **Console Formatter** module is enabled, the extension also in
 
 Several features query the user's Salesforce org via the REST and Tooling APIs:
 - **Field Inspector** reads object describe metadata.
+- **Environment Safeguard** reads `Organization.TimeZoneSidKey` only when the optional org clock is enabled.
 - **Command Palette** queries Profiles, Permission Sets, Flows, Apex Classes, and Apex Triggers for metadata search, and can toggle debug logs (creating/deleting TraceFlag and DebugLevel records).
 - **Deep Dependency Inspector** queries `MetadataComponentDependency` via the Tooling API.
 - **Profile to Permission Set** reads profile permissions and creates a new Permission Set with associated permission records.
@@ -49,6 +50,8 @@ The extension stores the following values in Chrome's synced storage so preferen
 
 - `enabledModules` — list of module IDs the user has toggled on or off
 - `orgSettings` — per-org UI preferences (e.g., environment badge label, colors)
+- `commandPaletteQuickActions` — hidden built-in quick actions plus user-defined custom quick actions
+- `moduleSettings` — global on/off settings for supported module behaviors (for example badge visibility, favicon/title toggles, or table-filter scope)
 - `storageVersion` — internal migration marker
 
 These values contain no personally identifiable information and no Salesforce data.
@@ -75,7 +78,7 @@ Salesforce object metadata (field names, types, labels) fetched by the Field Ins
 
 | Permission | Why it is needed |
 |---|---|
-| `storage` | Save and sync the user's enabled-module preferences and per-org settings via `chrome.storage.sync`; cache object metadata via `chrome.storage.local`. |
+| `storage` | Save and sync the user's enabled-module preferences, per-org settings, Command Palette quick actions, and global module settings via `chrome.storage.sync`; cache object metadata via `chrome.storage.local`. |
 | `cookies` | Read the `sid` session cookie locally so the extension can authenticate Salesforce API requests on the user's behalf without requiring a separate login. |
 | `scripting` | Runtime-register or inject local extension scripts only inside supported Salesforce tabs, including the optional Console Formatter bootstrap and a keyboard-shortcut fallback path. |
 | Host: `*://*.salesforce.com/*` | Required to support classic Salesforce pod hosts and Salesforce API endpoints used by authenticated org pages. |

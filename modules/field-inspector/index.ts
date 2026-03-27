@@ -23,7 +23,6 @@ const RECORD_LABEL_SELECTOR =
   'span.test-id__field-label, ' +
   '.slds-form-element__label:not(:has(span.test-id__field-label)), ' +
   'records-record-layout-item span[class*="label"]:not(:has(span.test-id__field-label))';
-const LIST_HEADER_SELECTOR = 'table[role="grid"] thead th[role="columnheader"], table[role="grid"] thead th';
 const TEXT_STRIP_SELECTOR = `.${BADGE_CLASS}, lightning-helptext, abbr.slds-required, button, svg, use`;
 const RECORD_LABEL_CANDIDATE_SELECTORS = [
   'span.test-id__field-label',
@@ -126,9 +125,7 @@ async function fetchFillRates(
 }
 
 function isSupportedPageType(pageType: ModuleContext['pageContext']['pageType']): boolean {
-  if (pageType === 'record') return moduleSettingsCache.showOnRecords !== false;
-  if (pageType === 'list') return moduleSettingsCache.showOnListViews !== false;
-  return false;
+  return pageType === 'record' && moduleSettingsCache.showOnRecords !== false;
 }
 
 async function copyText(value: string, successMessage: string): Promise<void> {
@@ -181,17 +178,6 @@ function extractCleanText(element: Element): string {
   const clone = element.cloneNode(true) as HTMLElement;
   removeNodes(clone, TEXT_STRIP_SELECTOR);
   return normalizeFieldLabelText(clone.textContent ?? '');
-}
-
-function extractListHeaderText(header: HTMLElement): string {
-  const titleCandidates = [
-    header.title,
-    ...Array.from(header.querySelectorAll<HTMLElement>('[title]')).map((element) => element.title),
-  ]
-    .map((value) => normalizeFieldLabelText(value))
-    .filter((value) => value && !/(sort|action|resize|menu|select all)/i.test(value));
-
-  return titleCandidates[0] ?? extractCleanText(header);
 }
 
 function dedupeFieldInfos(candidates: Array<FieldInfo | null | undefined>): FieldInfo[] {
@@ -700,7 +686,7 @@ function renderPopover(anchor: HTMLElement, fieldInfo: FieldInfo): void {
   window.addEventListener('scroll', handleViewportChange, true);
 }
 
-function createFieldBadge(fieldInfo: FieldInfo, kind: 'record' | 'list'): HTMLButtonElement {
+function createFieldBadge(fieldInfo: FieldInfo): HTMLButtonElement {
   const badge = document.createElement('button');
   badge.type = 'button';
   badge.className = BADGE_CLASS;
@@ -709,29 +695,22 @@ function createFieldBadge(fieldInfo: FieldInfo, kind: 'record' | 'list'): HTMLBu
   badge.setAttribute('aria-haspopup', 'dialog');
   badge.setAttribute('aria-expanded', 'false');
 
-  const isList = kind === 'list';
   badge.setAttribute('style', `
     display: inline-flex;
     align-items: center;
     gap: ${tokens.space.xs};
-    ${isList ? '' : `margin-left: ${tokens.space.sm};`}
-    padding: ${isList ? '0px 4px' : `1px ${tokens.space.sm}`};
+    margin-left: ${tokens.space.sm};
+    padding: 1px ${tokens.space.sm};
     background: ${tokens.color.primaryLight};
     color: ${tokens.color.primary};
-    font-size: ${isList ? '9px' : tokens.font.size.xs};
+    font-size: ${tokens.font.size.xs};
     font-weight: ${tokens.font.weight.semibold};
     border-radius: ${tokens.radius.sm};
     font-family: ${tokens.font.family.mono};
     cursor: pointer;
     vertical-align: middle;
     border: 1px solid ${tokens.color.primaryBorder};
-    line-height: ${isList ? '1.3' : '1.4'};
-    ${isList ? `
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    ` : ''}
+    line-height: 1.4;
   `);
 
   badge.addEventListener('mouseenter', () => {
@@ -765,37 +744,6 @@ function createFieldBadge(fieldInfo: FieldInfo, kind: 'record' | 'list'): HTMLBu
   return badge;
 }
 
-const LIST_BADGE_CONTAINER_CLASS = 'sfboost-list-badge-row';
-
-function findListBadgeMount(header: HTMLElement): HTMLElement {
-  // Check if we already created a badge container for this header
-  const existing = header.querySelector<HTMLElement>(`.${LIST_BADGE_CONTAINER_CLASS}`);
-  if (existing) return existing;
-
-  // Make the <th> a positioning anchor
-  const computed = getComputedStyle(header);
-  if (computed.position === 'static') {
-    header.style.position = 'relative';
-  }
-
-  // Create an absolutely-positioned container pinned to the bottom of the <th>
-  const container = document.createElement('div');
-  container.className = LIST_BADGE_CONTAINER_CLASS;
-  container.setAttribute('style', `
-    position: absolute;
-    bottom: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1;
-    pointer-events: auto;
-    line-height: 1;
-    max-width: calc(100% - 8px);
-  `);
-
-  header.appendChild(container);
-  return container;
-}
-
 function applyRecordBadges(fieldIndex: FieldIndex): void {
   const objectApiName = currentCtx?.pageContext.objectApiName;
 
@@ -809,7 +757,7 @@ function applyRecordBadges(fieldIndex: FieldIndex): void {
       const badgeMount = findBestRecordBadgeMount(fieldIndex, container, fieldInfo);
       if (!badgeMount || badgeMount.querySelector(`.${BADGE_CLASS}`)) return;
 
-      badgeMount.appendChild(createFieldBadge(fieldInfo, 'record'));
+      badgeMount.appendChild(createFieldBadge(fieldInfo));
     });
   }
 
@@ -819,32 +767,12 @@ function applyRecordBadges(fieldIndex: FieldIndex): void {
     const fieldInfo = resolveFieldInfo(fieldIndex, extractCleanText(labelEl));
     if (!fieldInfo) return;
 
-    labelEl.appendChild(createFieldBadge(fieldInfo, 'record'));
-  });
-}
-
-function applyListBadges(fieldIndex: FieldIndex): void {
-  document.querySelectorAll<HTMLElement>(LIST_HEADER_SELECTOR).forEach((headerEl) => {
-    if (headerEl.querySelector(`.${BADGE_CLASS}`)) return;
-
-    const fieldInfo = resolveFieldInfo(fieldIndex, extractListHeaderText(headerEl));
-    if (!fieldInfo) return;
-
-    findListBadgeMount(headerEl).appendChild(createFieldBadge(fieldInfo, 'list'));
+    labelEl.appendChild(createFieldBadge(fieldInfo));
   });
 }
 
 function applyBadgesToDOM(fieldIndex: FieldIndex): void {
-  if (!currentCtx) return;
-
-  if (currentCtx.pageContext.pageType === 'record') {
-    applyRecordBadges(fieldIndex);
-    return;
-  }
-
-  if (currentCtx.pageContext.pageType === 'list') {
-    applyListBadges(fieldIndex);
-  }
+  applyRecordBadges(fieldIndex);
 }
 
 function startObserver(fieldIndex: FieldIndex): void {
@@ -872,14 +800,6 @@ function stopObserver(): void {
 
 function removeFieldBadges(): void {
   closePopover();
-  // Remove list badge containers and restore <th> position
-  document.querySelectorAll(`.${LIST_BADGE_CONTAINER_CLASS}`).forEach((container) => {
-    const header = container.parentElement;
-    container.remove();
-    if (header?.tagName === 'TH') {
-      header.style.position = '';
-    }
-  });
   document.querySelectorAll(`.${BADGE_CLASS}`).forEach((element) => element.remove());
 }
 
@@ -927,7 +847,7 @@ function detachListeners(): void {
 const fieldInspector: SFBoostModule = {
   id: 'field-inspector',
   name: 'Field Inspector',
-  description: 'Shows API names on record fields and list columns, with click-through metadata',
+  description: 'Shows API names on record fields, with click-through metadata',
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;

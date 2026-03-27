@@ -13,6 +13,11 @@ export interface OrgInfo {
   sandboxName?: string;
 }
 
+export interface SalesforceOrgContext extends OrgInfo {
+  hostname: string;
+  orgSettingsKey: string;
+}
+
 const SALESFORCE_CLASSIC_POD_HOST_RE = /^[a-z]{2,6}\d+(?:-[a-z0-9-]+)?\.salesforce\.com$/i;
 const CLASSIC_SETUP_PATH_RE = /^(?:\/setup\/|\/ui\/setup\/|\/p\/setup\/)/i;
 
@@ -77,6 +82,10 @@ function extractDomain(hostname: string): string {
   return hostname.split('.')[0] ?? hostname;
 }
 
+export function getCanonicalOrgSettingsKey(hostname: string): string {
+  return extractDomain(hostname);
+}
+
 export function buildInstanceUrl(hostname: string): string {
   // Convert lightning.force.com to my.salesforce.com for API calls
   if (hostname.includes('.lightning.force.com')) {
@@ -88,6 +97,45 @@ export function buildInstanceUrl(hostname: string): string {
     return `https://${hostname.replace('.salesforce-setup.com', '.salesforce.com')}`;
   }
   return `https://${hostname}`;
+}
+
+export function getOrgSettingsFallbackKeys(hostname: string, legacyMyDomain?: string): string[] {
+  const keys = new Set<string>();
+
+  const normalizedHost = hostname.trim();
+  if (normalizedHost) {
+    keys.add(normalizedHost);
+    try {
+      keys.add(new URL(buildInstanceUrl(normalizedHost)).hostname);
+    } catch {
+      // Ignore malformed hostnames and keep best-effort fallbacks only.
+    }
+  }
+
+  const normalizedLegacy = legacyMyDomain?.trim();
+  if (normalizedLegacy) {
+    keys.add(normalizedLegacy);
+  }
+
+  return [...keys];
+}
+
+export function getSalesforceOrgContextFromUrl(value: string): SalesforceOrgContext | null {
+  try {
+    const url = new URL(value);
+    if (!isSalesforceOrgHost(url.hostname)) return null;
+
+    const orgInfo = detectOrgType(url.hostname);
+    return {
+      hostname: url.hostname,
+      orgType: orgInfo.orgType,
+      myDomain: orgInfo.myDomain,
+      orgSettingsKey: getCanonicalOrgSettingsKey(url.hostname),
+      sandboxName: orgInfo.sandboxName,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export type PageType = 'record' | 'list' | 'setup' | 'home' | 'app' | 'flow-builder' | 'change-set' | 'other';

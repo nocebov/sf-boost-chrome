@@ -31,7 +31,7 @@ If applicable, add screenshots to help explain your problem.
 ## Environment
 
 - **Chrome version:** [e.g. 124]
-- **SF Boost version:** [e.g. 0.3.0]
+- **SF Boost version:** [e.g. 0.7.0]
 - **Salesforce edition:** [Lightning / Classic]
 - **Org type:** [Production / Sandbox / Developer / Scratch]
 

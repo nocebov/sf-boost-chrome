@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   detectOrgType,
   buildInstanceUrl,
+  getCanonicalOrgSettingsKey,
+  getOrgSettingsFallbackKeys,
+  getSalesforceOrgContextFromUrl,
   isSalesforceOrgHost,
   parseLightningUrl,
 } from '../lib/salesforce-urls';
@@ -157,6 +160,37 @@ describe('buildInstanceUrl', () => {
   it('adds https:// prefix', () => {
     expect(buildInstanceUrl('custom.salesforce.com'))
       .toBe('https://custom.salesforce.com');
+  });
+});
+
+describe('org settings context helpers', () => {
+  it('builds canonical org keys without sandbox collisions', () => {
+    expect(getCanonicalOrgSettingsKey('acme.my.salesforce.com')).toBe('acme');
+    expect(getCanonicalOrgSettingsKey('acme--qa.sandbox.lightning.force.com')).toBe('acme--qa');
+  });
+
+  it('builds fallback keys for current host, instance host, and legacy myDomain', () => {
+    expect(getOrgSettingsFallbackKeys('acme--qa.sandbox.lightning.force.com', 'acme')).toEqual([
+      'acme--qa.sandbox.lightning.force.com',
+      'acme--qa.sandbox.my.salesforce.com',
+      'acme',
+    ]);
+  });
+
+  it('extracts Salesforce org context from a tab URL', () => {
+    expect(getSalesforceOrgContextFromUrl(
+      'https://acme--qa.sandbox.lightning.force.com/lightning/setup/ObjectManager/home',
+    )).toEqual({
+      hostname: 'acme--qa.sandbox.lightning.force.com',
+      orgType: 'sandbox',
+      myDomain: 'acme',
+      orgSettingsKey: 'acme--qa',
+      sandboxName: 'qa',
+    });
+  });
+
+  it('returns null for non-Salesforce URLs', () => {
+    expect(getSalesforceOrgContextFromUrl('https://example.com/path')).toBeNull();
   });
 });
 

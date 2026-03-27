@@ -1,9 +1,10 @@
 import { registry } from '../registry';
 import type { SFBoostModule, ModuleContext } from '../types';
 import type { OrgSettings, ModuleSettings } from '../../lib/storage';
-import { getOrgSettings, getModuleSettings } from '../../lib/storage';
+import { getResolvedOrgSettings, getModuleSettings } from '../../lib/storage';
 import { sendMessage } from '../../lib/messaging';
 import { tokens } from '../../lib/design-tokens';
+import { getOrgSettingsFallbackKeys } from '../../lib/salesforce-urls';
 import { resolveEnvironmentAppearance, getTitlePrefix, type EnvironmentAppearance } from './appearance';
 import { ColoredFaviconController } from './favicon';
 
@@ -119,10 +120,16 @@ function startClock(clockEl: HTMLElement, timeZone: string): void {
 async function loadSafeguardState(
   ctx: ModuleContext,
 ): Promise<{ settings: OrgSettings; appearance: EnvironmentAppearance; moduleSettings: ModuleSettings }> {
-  const [settings, moduleSettings] = await Promise.all([
-    getOrgSettings(ctx.pageContext.myDomain),
+  const pageHostname = new URL(ctx.pageContext.url).hostname;
+  const fallbackKeys = getOrgSettingsFallbackKeys(pageHostname, ctx.pageContext.myDomain)
+    .filter((key) => key !== ctx.pageContext.orgSettingsKey);
+
+  const [resolvedSettings, moduleSettings] = await Promise.all([
+    getResolvedOrgSettings(ctx.pageContext.orgSettingsKey, fallbackKeys),
     getModuleSettings('environment-safeguard'),
   ]);
+
+  const settings = resolvedSettings.settings;
   return {
     settings,
     moduleSettings,

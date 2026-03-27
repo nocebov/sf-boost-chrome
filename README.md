@@ -7,6 +7,8 @@
 
 **SF Boost** is a Chrome Extension focused on one job: making everyday Salesforce admin and developer work faster inside the native UI.
 
+Version `0.7.0` currently ships with 11 user-facing modules: 5 enabled by default and 6 opt-in.
+
 > Built with [WXT](https://wxt.dev/) · TypeScript · Bun
 
 ![SF Boost popup showing all modules with toggles](screenshots/5445453.jpg)
@@ -38,9 +40,9 @@ Default quick actions (when not customized): `1` Profiles · `2` Permission Sets
 
 ### Field Inspector
 
-See field API names directly on **Lightning record pages and list views** — no more digging through Object Manager.
+See field API names directly on **Lightning record pages** — no more digging through Object Manager.
 
-When enabled (on by default), SF Boost automatically adds blue API-name badges next to supported field labels on record pages and next to list-view column headers. **Click** a badge to open a compact metadata panel with field type, required/optional state, access hints, relationship info, formula/help text, copy helpers, and a direct shortcut to the field in Object Manager. Use `Ctrl`/`Cmd` + click on a badge for a quick API-name copy, or `Alt+Shift+F` to hide/show badges without disabling the module.
+When enabled (on by default), SF Boost automatically adds blue API-name badges next to supported field labels on record pages. **Click** a badge to open a compact metadata panel with field type, required/optional state, access hints, relationship info, formula/help text, copy helpers, and a direct shortcut to the field in Object Manager. Use `Ctrl`/`Cmd` + click on a badge for a quick API-name copy, or `Alt+Shift+F` to hide/show badges without disabling the module.
 
 ---
 
@@ -75,7 +77,7 @@ A color-coded badge in the top-left corner that tells you exactly which org you'
 | Scratch | Teal / Cyan |
 | Trailhead | Purple |
 
-Updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, `[DEV]`, `[SCRATCH]`, `[TRAIL]`). Supports custom labels, badge colors, and text colors per org via `chrome.storage.sync`. The badge is automatically hidden on Flow Builder and Lightning App Builder pages to avoid canvas overlap.
+Shows a two-line badge with the environment label and an optional org clock, updates the browser tab title with an environment prefix (`[PROD]`, `[SBX: name]`, `[DEV]`, `[SCRATCH]`, `[TRAIL]`), and can recolor the Salesforce favicon. Supports custom labels, badge colors, and text colors per org via `chrome.storage.sync`. The badge is automatically hidden on Flow Builder and Lightning App Builder pages to avoid canvas overlap.
 
 ---
 
@@ -151,7 +153,7 @@ When enabled, SF Boost installs an early `document_start` formatter only on auth
 
 **[Get SF Boost from the Chrome Web Store](https://chromewebstore.google.com/detail/sf-boost/eiboagfkpffiagbjljpkkpehidoihegh)** — one click, no setup required.
 
-For detailed usage instructions, see the **[User Guide](docs/user-guide.md)**.
+For detailed usage instructions, see the **[User Guide](docs/user-guide.md)**. Use the popup `Settings` button for module-level options and shortcut help.
 
 ---
 
@@ -191,7 +193,7 @@ Load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` 
 - The `sid` cookie is read only inside Chrome via the `cookies` permission. It is used to authenticate direct requests from the extension to Salesforce, not to any developer-operated backend.
 - API-assisted features run only against the org open in the active Salesforce tab.
 - SF Boost does not send Salesforce data to third-party servers.
-- Settings are stored in `chrome.storage.sync` (module toggles, per-org badge overrides, Command Palette quick actions), and describe-cache data is stored in `chrome.storage.local`.
+- Settings are stored in `chrome.storage.sync` (module toggles, per-org badge overrides, Command Palette quick actions, module settings), and describe-cache data is stored in `chrome.storage.local`.
 - The extension is built around a single purpose: improving day-to-day Salesforce admin and developer workflows inside the native Salesforce UI.
 
 Documentation:

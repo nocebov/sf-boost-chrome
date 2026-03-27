@@ -8,6 +8,7 @@
   --sfb-text-secondary: #475569;
   --sfb-text-tertiary: #6b7280;
   --sfb-text-muted: #9ca3af;
+  --sfb-text-on-primary: #fff;
 
   --sfb-surface-base: #ffffff;
   --sfb-surface-raised: #f9fafb;
@@ -19,6 +20,7 @@
   --sfb-success: #22c55e;
 
   --sfb-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --sfb-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
 
   --sfb-size-xs: 10px;
   --sfb-size-sm: 11px;
@@ -48,6 +50,7 @@
   --sfb-transition-fast: 0.1s;
   --sfb-transition-normal: 0.15s;
   --sfb-transition-slow: 0.2s;
+  --sfb-shadow-xs: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 * {
@@ -65,9 +68,39 @@ body {
 }
 
 .settings-page {
-  max-width: 600px;
+  max-width: 720px;
   margin: 0 auto;
   padding: 32px var(--sfb-space-2xl) 48px;
+}
+
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sfb-space-lg);
+}
+
+.section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-heading h2 {
+  font-size: 18px;
+  font-weight: var(--sfb-weight-bold);
+  color: var(--sfb-text-primary);
+  letter-spacing: -0.2px;
+}
+
+.section-heading p {
+  font-size: var(--sfb-size-sm);
+  color: var(--sfb-text-tertiary);
 }
 
 /* ── Header ── */
@@ -114,7 +147,6 @@ body {
   background: var(--sfb-surface-base);
   border: 1px solid var(--sfb-border-default);
   border-radius: var(--sfb-radius-xl);
-  margin-bottom: var(--sfb-space-xl);
   overflow: hidden;
 }
 
@@ -143,6 +175,101 @@ body {
   padding: var(--sfb-space-md) 0;
 }
 
+.shortcut-card {
+  background: var(--sfb-surface-base);
+  border: 1px solid var(--sfb-border-default);
+  border-radius: var(--sfb-radius-xl);
+  overflow: hidden;
+}
+
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sfb-space-xl);
+  padding: var(--sfb-space-lg) var(--sfb-space-xl);
+}
+
+.shortcut-row + .shortcut-row {
+  border-top: 1px solid var(--sfb-border-default);
+}
+
+.shortcut-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shortcut-name {
+  font-size: 15px;
+  font-weight: var(--sfb-weight-semibold);
+  color: var(--sfb-text-primary);
+}
+
+.shortcut-desc {
+  font-size: var(--sfb-size-sm);
+  color: var(--sfb-text-tertiary);
+}
+
+.shortcut-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--sfb-space-lg);
+  border: 1px solid var(--sfb-border-default);
+  border-bottom-color: var(--sfb-border-muted);
+  border-radius: var(--sfb-radius-pill);
+  background: linear-gradient(135deg, var(--sfb-surface-base), var(--sfb-primary-light));
+  color: var(--sfb-text-primary);
+  font-size: var(--sfb-size-md);
+  font-family: var(--sfb-font-mono);
+  font-weight: var(--sfb-weight-semibold);
+  box-shadow: var(--sfb-shadow-xs);
+}
+
+.shortcut-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sfb-space-lg) var(--sfb-space-xl);
+  border-top: 1px solid var(--sfb-border-default);
+  background: var(--sfb-surface-raised);
+}
+
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 var(--sfb-space-xl);
+  border: 1px solid transparent;
+  border-radius: var(--sfb-radius-pill);
+  background: var(--sfb-primary);
+  color: var(--sfb-text-on-primary);
+  font-size: var(--sfb-size-sm);
+  font-weight: var(--sfb-weight-semibold);
+  font-family: var(--sfb-font-sans);
+  cursor: pointer;
+  transition: background var(--sfb-transition-normal), transform var(--sfb-transition-fast);
+}
+
+.action-button:hover {
+  background: var(--sfb-primary-hover);
+}
+
+.action-button:focus-visible {
+  outline: 2px solid var(--sfb-primary);
+  outline-offset: 2px;
+}
+
+.action-button:active {
+  transform: translateY(1px);
+}
+
 /* ── Setting Row ── */
 .setting-row {
   display: flex;
@@ -150,6 +277,7 @@ body {
   justify-content: space-between;
   padding: var(--sfb-space-md) var(--sfb-space-xl);
   transition: background var(--sfb-transition-fast);
+  gap: var(--sfb-space-xl);
 }
 
 .setting-row:hover {
@@ -238,4 +366,33 @@ body {
 .footer-note {
   font-size: var(--sfb-size-sm);
   color: var(--sfb-text-muted);
+}
+
+@media (max-width: 680px) {
+  .settings-page {
+    padding-left: var(--sfb-space-lg);
+    padding-right: var(--sfb-space-lg);
+  }
+
+  .setting-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .module-card-desc {
+    margin-left: 0;
+  }
+
+  .shortcut-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .shortcut-card-footer {
+    justify-content: stretch;
+  }
+
+  .action-button {
+    width: 100%;
+  }
 }

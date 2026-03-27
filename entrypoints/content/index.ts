@@ -1,6 +1,12 @@
 import { registry } from '../../modules/registry';
 import { getEnabledModules, DEFAULTS } from '../../lib/storage';
-import { detectOrgType, buildInstanceUrl, parseLightningUrl, isSalesforceOrgHost } from '../../lib/salesforce-urls';
+import {
+  detectOrgType,
+  buildInstanceUrl,
+  parseLightningUrl,
+  isSalesforceOrgHost,
+  getCanonicalOrgSettingsKey,
+} from '../../lib/salesforce-urls';
 import type { SFPageContext } from '../../modules/types';
 import { logger } from '../../lib/logger';
 
@@ -27,8 +33,10 @@ const CLASSIC_SETUP_IFRAME_SELECTOR =
   'iframe[src*="/setup/"], iframe[src*="/perm"], iframe[src*="/profiles/"], ' +
   'iframe.setupcontent, iframe[name="setupFrame"], iframe[title*="Setup"]';
 const IFRAME_MODULE_UPDATE_MESSAGE = 'sfboost:update-iframe-modules';
+const IFRAME_MODULE_UPDATE_EVENT = 'sfboost:iframe-module-update';
 
 let currentCtx: { pageContext: SFPageContext } | null = null;
+let iframeModuleSyncInterval: ReturnType<typeof setInterval> | null = null;
 
 function buildPageContext(): SFPageContext {
   const { hostname, pathname, search, href } = window.location;
@@ -38,6 +46,7 @@ function buildPageContext(): SFPageContext {
     url: href,
     orgType: orgInfo.orgType,
     myDomain: orgInfo.myDomain,
+    orgSettingsKey: getCanonicalOrgSettingsKey(hostname),
     sandboxName: orgInfo.sandboxName,
     pageType: pageInfo.pageType,
     objectApiName: pageInfo.objectApiName,
@@ -94,6 +103,16 @@ function broadcastIframeModuleUpdate(enabledIds: string[]): void {
   });
 }
 
+function relayIframeModuleUpdate(enabledIds: string[]): void {
+  broadcastIframeModuleUpdate(enabledIds);
+  chrome.runtime.sendMessage({
+    type: 'sfboost:sync-iframe-modules',
+    enabledIds,
+  }).catch(() => {
+    // Best-effort fan-out only.
+  });
+}
+
 /**
  * Runs inside classic Setup iframes (e.g. profile/permset edit pages).
  * These iframes are cross-origin when the parent is on salesforce-setup.com,
@@ -113,7 +132,6 @@ async function initClassicSetupIframe(): Promise<void> {
     }
 
     const activeIframeModules = IFRAME_MODULE_IDS.filter(id => enabledIds.includes(id));
-    if (activeIframeModules.length === 0) return;
 
     const { hostname, href } = window.location;
     const orgInfo = detectOrgType(hostname);
@@ -123,6 +141,7 @@ async function initClassicSetupIframe(): Promise<void> {
       url: href,
       orgType: orgInfo.orgType,
       myDomain: orgInfo.myDomain,
+      orgSettingsKey: getCanonicalOrgSettingsKey(hostname),
       sandboxName: orgInfo.sandboxName,
       pageType: 'setup',
       instanceUrl: buildInstanceUrl(hostname),
@@ -130,13 +149,19 @@ async function initClassicSetupIframe(): Promise<void> {
 
     const ctx = { pageContext };
     currentCtx = ctx;
+    let lastIframeEnabledKey = JSON.stringify(activeIframeModules);
+
+    const applyIframeModuleUpdate = (nextEnabled: string[]) => {
+      lastIframeEnabledKey = JSON.stringify(filterEnabledModuleIds(nextEnabled, IFRAME_MODULE_IDS));
+      return syncEnabledModules(nextEnabled, IFRAME_MODULE_IDS);
+    };
 
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
       if (areaName !== 'sync' || !changes.enabledModules) return;
       const nextEnabled = Array.isArray(changes.enabledModules.newValue)
         ? changes.enabledModules.newValue
         : DEFAULTS.enabledModules;
-      syncEnabledModules(nextEnabled, IFRAME_MODULE_IDS).catch((e) => {
+      applyIframeModuleUpdate(nextEnabled).catch((e) => {
         logger.error(`Failed to sync iframe module toggles: ${e}`);
       });
     };
@@ -144,7 +169,7 @@ async function initClassicSetupIframe(): Promise<void> {
     const handleRuntimeMessage = (message: { type?: string; enabledIds?: string[] }) => {
       if (message.type !== 'sfboost:update-modules') return;
       const nextEnabled = Array.isArray(message.enabledIds) ? message.enabledIds : DEFAULTS.enabledModules;
-      syncEnabledModules(nextEnabled, IFRAME_MODULE_IDS).catch((e) => {
+      applyIframeModuleUpdate(nextEnabled).catch((e) => {
         logger.error(`Failed to apply iframe module update: ${e}`);
       });
     };
@@ -154,14 +179,40 @@ async function initClassicSetupIframe(): Promise<void> {
       if (!data || data.source !== 'sfboost' || data.type !== IFRAME_MODULE_UPDATE_MESSAGE) return;
 
       const nextEnabled = Array.isArray(data.enabledIds) ? data.enabledIds : DEFAULTS.enabledModules;
-      syncEnabledModules(nextEnabled, IFRAME_MODULE_IDS).catch((e) => {
+      applyIframeModuleUpdate(nextEnabled).catch((e) => {
         logger.error(`Failed to relay iframe module update: ${e}`);
+      });
+    };
+
+    const handleIframeModuleEvent = (event: Event) => {
+      const detail = (event as CustomEvent<string[]>).detail;
+      const nextEnabled = Array.isArray(detail) ? detail : DEFAULTS.enabledModules;
+      applyIframeModuleUpdate(nextEnabled).catch((e) => {
+        logger.error(`Failed to apply iframe module event: ${e}`);
       });
     };
 
     chrome.storage.onChanged.addListener(handleStorageChange);
     chrome.runtime.onMessage.addListener(handleRuntimeMessage);
     window.addEventListener('message', handleParentMessage);
+    window.addEventListener(IFRAME_MODULE_UPDATE_EVENT, handleIframeModuleEvent as EventListener);
+    if (iframeModuleSyncInterval) clearInterval(iframeModuleSyncInterval);
+    iframeModuleSyncInterval = setInterval(() => {
+      getEnabledModules()
+        .then((nextEnabled) => {
+          const nextKey = JSON.stringify(filterEnabledModuleIds(nextEnabled, IFRAME_MODULE_IDS));
+          if (nextKey === lastIframeEnabledKey) return;
+          return applyIframeModuleUpdate(nextEnabled);
+        })
+        .catch(() => {
+          const nextKey = JSON.stringify(filterEnabledModuleIds(DEFAULTS.enabledModules, IFRAME_MODULE_IDS));
+          if (nextKey === lastIframeEnabledKey) return;
+          return applyIframeModuleUpdate(DEFAULTS.enabledModules);
+        })
+        .catch((e) => {
+          logger.error(`Failed to poll iframe module state: ${e}`);
+        });
+    }, 1000);
 
     if (activeIframeModules.length > 0) {
       await registry.initModules(ctx, activeIframeModules);
@@ -237,28 +288,28 @@ export default defineContentScript({
 
       const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
         if (areaName !== 'sync' || !changes.enabledModules) return;
-      const nextEnabled = Array.isArray(changes.enabledModules.newValue)
-        ? changes.enabledModules.newValue
-        : DEFAULTS.enabledModules;
-      syncEnabledModules(nextEnabled).catch((e) => {
-        logger.error(`Failed to sync module toggles: ${e}`);
-      });
-      broadcastIframeModuleUpdate(nextEnabled);
-    };
-
-    const handleRuntimeMessage = (message: { type?: string; enabledIds?: string[] }) => {
-      if (message.type === 'show-command-palette') {
-        document.dispatchEvent(new CustomEvent('sfboost:toggle-palette'));
-      } else if (message.type === 'toggle-field-inspector') {
-        document.dispatchEvent(new CustomEvent('sfboost:toggle-inspector'));
-      } else if (message.type === 'sfboost:update-modules') {
-        const nextEnabled = Array.isArray(message.enabledIds) ? message.enabledIds : DEFAULTS.enabledModules;
+        const nextEnabled = Array.isArray(changes.enabledModules.newValue)
+          ? changes.enabledModules.newValue
+          : DEFAULTS.enabledModules;
         syncEnabledModules(nextEnabled).catch((e) => {
-          logger.error(`Failed to apply popup module update: ${e}`);
+          logger.error(`Failed to sync module toggles: ${e}`);
         });
-        broadcastIframeModuleUpdate(nextEnabled);
-      }
-    };
+        relayIframeModuleUpdate(nextEnabled);
+      };
+
+      const handleRuntimeMessage = (message: { type?: string; enabledIds?: string[] }) => {
+        if (message.type === 'show-command-palette') {
+          document.dispatchEvent(new CustomEvent('sfboost:toggle-palette'));
+        } else if (message.type === 'toggle-field-inspector') {
+          document.dispatchEvent(new CustomEvent('sfboost:toggle-inspector'));
+        } else if (message.type === 'sfboost:update-modules') {
+          const nextEnabled = Array.isArray(message.enabledIds) ? message.enabledIds : DEFAULTS.enabledModules;
+          syncEnabledModules(nextEnabled).catch((e) => {
+            logger.error(`Failed to apply popup module update: ${e}`);
+          });
+          relayIframeModuleUpdate(nextEnabled);
+        }
+      };
 
       // Patch History API
       const origPushState = history.pushState.bind(history);

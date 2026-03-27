@@ -146,6 +146,20 @@ export default defineBackground(() => {
       return true;
     }
 
+    if (message.type === 'sfboost:sync-iframe-modules' && sender.tab?.id) {
+      const enabledIds = Array.isArray(message.enabledIds) ? message.enabledIds : DEFAULTS.enabledModules;
+      chrome.scripting.executeScript({
+        target: { tabId: sender.tab.id, allFrames: true },
+        func: (eventName: string, ids: string[]) => {
+          window.dispatchEvent(new CustomEvent(eventName, { detail: ids }));
+        },
+        args: ['sfboost:iframe-module-update', enabledIds],
+      })
+        .then(() => sendResponse({ ok: true }))
+        .catch((e: Error) => sendResponse({ __error: e.message }));
+      return true;
+    }
+
     if (message.type !== 'updateBadge' || !sender.tab?.id) {
       return;
     }

@@ -53,6 +53,7 @@ import {
   getEnabledModules,
   setEnabledModules,
   getOrgSettings,
+  getResolvedOrgSettings,
   setOrgSettings,
   getQuickActionConfig,
   setQuickActionConfig,
@@ -177,6 +178,43 @@ describe('storage', () => {
 
       expect((await getOrgSettings('acme.my.salesforce.com')).badgeLabel).toBe('PROD');
       expect((await getOrgSettings('dev.my.salesforce.com')).badgeLabel).toBe('DEV');
+    });
+
+    it('clears stored values when empty strings or undefined are saved', async () => {
+      await setOrgSettings('acme', {
+        badgeEnabled: false,
+        badgeColor: '#ff0000',
+        badgeLabel: 'PROD',
+      });
+
+      await setOrgSettings('acme', {
+        badgeEnabled: undefined,
+        badgeColor: '',
+        badgeLabel: '',
+      });
+
+      expect(await getOrgSettings('acme')).toEqual({});
+    });
+
+    it('resolves legacy fallback keys when the canonical key is missing', async () => {
+      syncStore.orgSettings = {
+        acme: { badgeLabel: 'SHARED' },
+      };
+
+      const result = await getResolvedOrgSettings('acme--qa', ['acme']);
+      expect(result.matchedKey).toBe('acme');
+      expect(result.settings.badgeLabel).toBe('SHARED');
+    });
+
+    it('prefers the canonical key even when it stores an empty object', async () => {
+      syncStore.orgSettings = {
+        'acme--qa': {},
+        acme: { badgeLabel: 'SHARED' },
+      };
+
+      const result = await getResolvedOrgSettings('acme--qa', ['acme']);
+      expect(result.matchedKey).toBe('acme--qa');
+      expect(result.settings).toEqual({});
     });
   });
 

@@ -22,6 +22,7 @@ function createMockContext(): ModuleContext {
       url: 'https://acme.lightning.force.com/lightning/setup/home',
       orgType: 'production',
       myDomain: 'acme',
+      orgSettingsKey: 'acme',
       pageType: 'setup',
       instanceUrl: 'https://acme.my.salesforce.com',
     },

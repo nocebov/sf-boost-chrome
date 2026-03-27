@@ -81,7 +81,7 @@ Unit tests cover all pure-logic modules that don't depend on the DOM or Chrome A
 - **`salesforce-utils.test.ts`** — Salesforce ID validation, SOQL escaping, CSS color validation, domain/URL security checks
 - **`storage.test.ts`** — module ID normalization, org settings, describe cache TTL & eviction (uses chrome.storage mock)
 - **`search-engine.test.ts`** — fuzzy search scoring: exact, starts-with, word initials, substring, fuzzy, keyword matches
-- **`catalog.test.ts`** — catalog integrity: all 9 modules present, unique IDs, access levels, default-enabled/disabled sets
+- **`catalog.test.ts`** — catalog integrity: all 11 catalog modules present, unique IDs, access levels, default-enabled/disabled sets
 - **`registry.test.ts`** — module lifecycle: register, init, navigate, enable/disable, destroy, error isolation
 
 Run in watch mode during development:
@@ -99,7 +99,7 @@ bun run test:watch
 
 ### Manual QA
 
-Before publishing a new version, run through the full manual QA checklist in [`QA_CHECKLIST.md`](./QA_CHECKLIST.md). It covers all 9 modules, SPA navigation, cross-browser checks, and security verification.
+Before publishing a new version, run through the full manual QA checklist in [`QA_CHECKLIST.md`](./QA_CHECKLIST.md). It covers all 11 current catalog modules, SPA navigation, cross-browser checks, and security verification.
 
 ## Code Guidelines
 

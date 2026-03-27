@@ -4,6 +4,7 @@ export interface SFPageContext {
   url: string;
   orgType: OrgType;
   myDomain: string;
+  orgSettingsKey: string;
   sandboxName?: string;
   pageType: PageType;
   objectApiName?: string;

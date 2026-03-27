@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Changed
+- Documentation refreshed for the `0.7.0` release line: README, user guide, admin packet, reviewer notes, privacy policy, support docs, roadmap, QA checklist, contributing guide, and bug report template now reflect the shipped module set and current settings behavior.
+
 ## [0.7.0] - 2026-03-26
 
 ### Added
