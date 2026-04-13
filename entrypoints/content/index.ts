@@ -5,6 +5,7 @@ import {
   buildInstanceUrl,
   parseLightningUrl,
   isSalesforceOrgHost,
+  isExperienceBuilderHost,
   getCanonicalOrgSettingsKey,
 } from '../../lib/salesforce-urls';
 import type { SFPageContext } from '../../modules/types';
@@ -34,6 +35,7 @@ const CLASSIC_SETUP_IFRAME_SELECTOR =
   'iframe.setupcontent, iframe[name="setupFrame"], iframe[title*="Setup"]';
 const IFRAME_MODULE_UPDATE_MESSAGE = 'sfboost:update-iframe-modules';
 const IFRAME_MODULE_UPDATE_EVENT = 'sfboost:iframe-module-update';
+const EXPERIENCE_BUILDER_MODULE_IDS = ['hide-devops-bar'] as const;
 
 let currentCtx: { pageContext: SFPageContext } | null = null;
 let iframeModuleSyncInterval: ReturnType<typeof setInterval> | null = null;
@@ -58,6 +60,15 @@ function buildPageContext(): SFPageContext {
 function filterEnabledModuleIds(enabledIds: string[], allowedIds?: readonly string[]): string[] {
   if (!allowedIds) return enabledIds;
   return allowedIds.filter((id) => enabledIds.includes(id));
+}
+
+function getHostScopedMainFrameModuleIds(hostname: string): readonly string[] | undefined {
+  // Experience Builder runs on a separate authenticated shell. Restrict support
+  // there to modules we have explicitly validated for that surface.
+  if (isExperienceBuilderHost(hostname)) {
+    return EXPERIENCE_BUILDER_MODULE_IDS;
+  }
+  return undefined;
 }
 
 async function syncEnabledModules(
@@ -232,6 +243,7 @@ export default defineContentScript({
     '*://*.lightning.force.com/*',
     '*://*.my.salesforce.com/*',
     '*://*.salesforce-setup.com/*',
+    '*://*.builder.salesforce-experience.com/*',
   ],
   runAt: 'document_idle',
   allFrames: true,
@@ -257,6 +269,7 @@ export default defineContentScript({
 
     try {
       const pageContext = buildPageContext();
+      const allowedMainFrameModuleIds = getHostScopedMainFrameModuleIds(window.location.hostname);
 
       let enabledIds: string[];
       try {
@@ -267,7 +280,7 @@ export default defineContentScript({
 
       const ctx = { pageContext };
       currentCtx = ctx;
-      await registry.initModules(ctx, enabledIds);
+      await registry.initModules(ctx, filterEnabledModuleIds(enabledIds, allowedMainFrameModuleIds));
 
       // SPA navigation detection
       let lastUrl = window.location.href;
@@ -291,7 +304,7 @@ export default defineContentScript({
         const nextEnabled = Array.isArray(changes.enabledModules.newValue)
           ? changes.enabledModules.newValue
           : DEFAULTS.enabledModules;
-        syncEnabledModules(nextEnabled).catch((e) => {
+        syncEnabledModules(nextEnabled, allowedMainFrameModuleIds).catch((e) => {
           logger.error(`Failed to sync module toggles: ${e}`);
         });
         relayIframeModuleUpdate(nextEnabled);
@@ -304,7 +317,7 @@ export default defineContentScript({
           document.dispatchEvent(new CustomEvent('sfboost:toggle-inspector'));
         } else if (message.type === 'sfboost:update-modules') {
           const nextEnabled = Array.isArray(message.enabledIds) ? message.enabledIds : DEFAULTS.enabledModules;
-          syncEnabledModules(nextEnabled).catch((e) => {
+          syncEnabledModules(nextEnabled, allowedMainFrameModuleIds).catch((e) => {
             logger.error(`Failed to apply popup module update: ${e}`);
           });
           relayIframeModuleUpdate(nextEnabled);

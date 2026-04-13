@@ -5,9 +5,21 @@ import {
   getCanonicalOrgSettingsKey,
   getOrgSettingsFallbackKeys,
   getSalesforceOrgContextFromUrl,
+  isExperienceBuilderHost,
   isSalesforceOrgHost,
   parseLightningUrl,
 } from '../lib/salesforce-urls';
+
+describe('isExperienceBuilderHost', () => {
+  it('accepts Experience Builder org hosts', () => {
+    expect(isExperienceBuilderHost('acme--qa.sandbox.builder.salesforce-experience.com')).toBe(true);
+    expect(isExperienceBuilderHost('acme.builder.salesforce-experience.com')).toBe(true);
+  });
+
+  it('rejects non-Experience Builder hosts', () => {
+    expect(isExperienceBuilderHost('acme.my.salesforce.com')).toBe(false);
+  });
+});
 
 describe('isSalesforceOrgHost', () => {
   it('accepts classic Salesforce pod hosts', () => {
@@ -19,6 +31,7 @@ describe('isSalesforceOrgHost', () => {
     expect(isSalesforceOrgHost('acme.my.salesforce.com')).toBe(true);
     expect(isSalesforceOrgHost('acme.lightning.force.com')).toBe(true);
     expect(isSalesforceOrgHost('acme.salesforce-setup.com')).toBe(true);
+    expect(isSalesforceOrgHost('acme--qa.sandbox.builder.salesforce-experience.com')).toBe(true);
   });
 
   it('rejects public Salesforce web properties', () => {
@@ -157,6 +170,16 @@ describe('buildInstanceUrl', () => {
       .toBe('https://acme.my.salesforce.com');
   });
 
+  it('converts Experience Builder sandbox host to sandbox my.salesforce.com', () => {
+    expect(buildInstanceUrl('acme--qa.sandbox.builder.salesforce-experience.com'))
+      .toBe('https://acme--qa.sandbox.my.salesforce.com');
+  });
+
+  it('converts Experience Builder production host to my.salesforce.com', () => {
+    expect(buildInstanceUrl('acme.builder.salesforce-experience.com'))
+      .toBe('https://acme.my.salesforce.com');
+  });
+
   it('adds https:// prefix', () => {
     expect(buildInstanceUrl('custom.salesforce.com'))
       .toBe('https://custom.salesforce.com');
@@ -182,6 +205,18 @@ describe('org settings context helpers', () => {
       'https://acme--qa.sandbox.lightning.force.com/lightning/setup/ObjectManager/home',
     )).toEqual({
       hostname: 'acme--qa.sandbox.lightning.force.com',
+      orgType: 'sandbox',
+      myDomain: 'acme',
+      orgSettingsKey: 'acme--qa',
+      sandboxName: 'qa',
+    });
+  });
+
+  it('extracts Experience Builder org context from a tab URL', () => {
+    expect(getSalesforceOrgContextFromUrl(
+      'https://acme--qa.sandbox.builder.salesforce-experience.com/sfsites/picasso/core/config/commeditor.jsp',
+    )).toEqual({
+      hostname: 'acme--qa.sandbox.builder.salesforce-experience.com',
       orgType: 'sandbox',
       myDomain: 'acme',
       orgSettingsKey: 'acme--qa',

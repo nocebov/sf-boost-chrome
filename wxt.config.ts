@@ -32,6 +32,7 @@ export default defineConfig({
       '*://*.my.salesforce.com/*',
       '*://*.lightning.force.com/*',
       '*://*.salesforce-setup.com/*',
+      '*://*.builder.salesforce-experience.com/*',
     ],
     commands: {
       'show-command-palette': {

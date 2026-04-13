@@ -76,6 +76,21 @@ function isAppBuilderPage(): boolean {
   return window.location.href.includes('appBuilder.app');
 }
 
+function isLoginPage(): boolean {
+  const url = new URL(window.location.href);
+
+  if (
+    url.pathname === '/' &&
+    (url.searchParams.has('ec') || url.searchParams.has('startURL') || url.searchParams.has('retURL'))
+  ) {
+    return true;
+  }
+
+  return Boolean(document.querySelector(
+    'form[action*="/login"], form[action*="/secur/login"], input#username, input#password, .loginForm, .sfdc_login_box'
+  ));
+}
+
 async function fetchOrgTimeZone(instanceUrl: string): Promise<string | null> {
   if (orgTimeZone) return orgTimeZone;
   try {
@@ -253,6 +268,11 @@ const environmentSafeguard: SFBoostModule = {
 
   async init(ctx: ModuleContext) {
     if (window.top !== window.self) return;
+    if (isLoginPage()) {
+      faviconController.clear();
+      removeBadge();
+      return;
+    }
     const { settings, appearance, moduleSettings } = await loadSafeguardState(ctx);
     if (moduleSettings.showFavicon !== false) {
       faviconController.apply(appearance);
@@ -263,6 +283,11 @@ const environmentSafeguard: SFBoostModule = {
 
   async onNavigate(ctx: ModuleContext) {
     if (window.top !== window.self) return;
+    if (isLoginPage()) {
+      faviconController.clear();
+      removeBadge();
+      return;
+    }
     const { settings, appearance, moduleSettings } = await loadSafeguardState(ctx);
     if (moduleSettings.showFavicon !== false) {
       faviconController.apply(appearance);

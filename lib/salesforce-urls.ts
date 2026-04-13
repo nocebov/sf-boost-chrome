@@ -20,10 +20,15 @@ export interface SalesforceOrgContext extends OrgInfo {
 
 const SALESFORCE_CLASSIC_POD_HOST_RE = /^[a-z]{2,6}\d+(?:-[a-z0-9-]+)?\.salesforce\.com$/i;
 const CLASSIC_SETUP_PATH_RE = /^(?:\/setup\/|\/ui\/setup\/|\/p\/setup\/)/i;
+const EXPERIENCE_BUILDER_HOST_SUFFIX = '.builder.salesforce-experience.com';
+
+export function isExperienceBuilderHost(hostname: string): boolean {
+  return hostname.toLowerCase().endsWith(EXPERIENCE_BUILDER_HOST_SUFFIX);
+}
 
 /**
  * Returns true only for hostnames that belong to an actual Salesforce org
- * (Lightning, classic pod hosts, setup hosts, code-builder).
+ * (Lightning, classic pod hosts, setup hosts, Experience Builder, code-builder).
  * Excludes public/informational sites like help.salesforce.com and login.salesforce.com.
  */
 export function isSalesforceOrgHost(hostname: string): boolean {
@@ -32,6 +37,7 @@ export function isSalesforceOrgHost(hostname: string): boolean {
     normalized.endsWith('.my.salesforce.com') ||
     normalized.endsWith('.lightning.force.com') ||
     normalized.endsWith('.salesforce-setup.com') ||
+    isExperienceBuilderHost(normalized) ||
     normalized.endsWith('.code-builder.platform.salesforce.com') ||
     SALESFORCE_CLASSIC_POD_HOST_RE.test(normalized)
   );
@@ -95,6 +101,16 @@ export function buildInstanceUrl(hostname: string): string {
   // e.g. foo.trailblaze.my.salesforce-setup.com → foo.trailblaze.my.salesforce.com
   if (hostname.includes('.salesforce-setup.com')) {
     return `https://${hostname.replace('.salesforce-setup.com', '.salesforce.com')}`;
+  }
+  // Convert Experience Builder domains back to the authenticated org host
+  if (hostname.includes('.sandbox.builder.salesforce-experience.com')) {
+    return `https://${hostname.replace(
+      '.sandbox.builder.salesforce-experience.com',
+      '.sandbox.my.salesforce.com',
+    )}`;
+  }
+  if (isExperienceBuilderHost(hostname)) {
+    return `https://${hostname.replace(EXPERIENCE_BUILDER_HOST_SUFFIX, '.my.salesforce.com')}`;
   }
   return `https://${hostname}`;
 }
