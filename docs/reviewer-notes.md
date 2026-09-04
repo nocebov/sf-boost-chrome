@@ -1,6 +1,22 @@
 # SF Boost Reviewer Notes
 
-Last updated: March 27, 2026
+Last updated: September 4, 2026
+
+## Reviewer notes for 0.7.3
+
+- Includes the current Dependency Inspector fixes, including approval email-template usage detection and stable Deep Scan placement beside page headings.
+- Restricts Profile to Permission Set extraction to valid profile detail pages and prevents stale-page or duplicate wizard launches.
+- No manifest permissions or host permissions were changed from 0.7.1.
+- Verification covers TypeScript, automated unit tests, and local browser fixtures; this is not a claim of live-org validation.
+
+## Reviewer notes for 0.7.1
+
+- This update is a small UI-only follow-up release.
+- One host permission was added: `*.builder.salesforce-experience.com`.
+- Reason for the new host: support the optional `Hide DevOps Center Bar` module on Salesforce Experience Builder pages, where the same DevOps shell can appear on a separate authenticated Salesforce host.
+- Scope on the new host is intentionally narrow: only `Hide DevOps Center Bar` is allowed to initialize there.
+- No new remote code, no new third-party network calls, and no new data collection were introduced in this release.
+- `Environment Safeguard` was changed to stay hidden on Salesforce login / unauthenticated pages, so the environment badge no longer appears before sign-in.
 
 ## Single purpose
 
@@ -9,7 +25,7 @@ SF Boost has one purpose: improve day-to-day Salesforce admin and developer work
 ## Review prerequisites
 
 - A valid Salesforce Lightning login is required to exercise most features.
-- Supported page hosts for review are `*.salesforce.com`, `*.my.salesforce.com`, `*.lightning.force.com`, and `*.salesforce-setup.com`.
+- Supported page hosts for review are `*.salesforce.com`, `*.my.salesforce.com`, `*.lightning.force.com`, `*.salesforce-setup.com`, and `*.builder.salesforce-experience.com`.
 - The extension does not include bundled reviewer credentials in the repository. If the Chrome Web Store review requires isolated access, provide a dedicated sandbox/demo-org login directly in the Store reviewer notes at submission time.
 
 ## Permissions and data use summary
@@ -28,12 +44,13 @@ SF Boost has one purpose: improve day-to-day Salesforce admin and developer work
 4. On any record page, verify a small clipboard icon next to the record header. Click it. Expected result: the record ID is copied to the clipboard. On any Lightning list view (for example `/lightning/o/Account/list`), verify a small copy icon next to the record name (it fades in on row hover). Clicking it copies that row's record ID.
 5. Open any Setup list page, for example Profiles, Permission Sets, or Apex Classes. Expected result: a table filter input appears above the table and filters rows client-side as you type. Multi-term search (space-separated) uses AND logic. Matched text is highlighted in yellow.
 6. On any supported page, verify the environment badge near the top-left of the page. Expected result: a color-coded Production (red), Sandbox (orange), Developer (green), Scratch (teal), or Trailhead (purple) indicator is shown. By default the badge also shows an org clock, the browser tab title is prefixed with the environment label, and the Salesforce favicon is recolored. The badge is automatically hidden on Flow Builder and Lightning App Builder pages to avoid canvas overlap.
-7. Optional read-only API scenario: enable `Dependency Inspector`, open an Object Manager field page or Apex Class page, then click `Deep Scan`. Expected result: the extension issues a Tooling API query to the active org and shows dependency results grouped by component type in a modal.
-8. Optional write-capable scenario: enable `Profile to Permission Set`, open a Profile page in Setup, click `Extract to Permission Set`, and walk through the wizard. Expected result: the extension reads the profile, lets you choose permissions with per-category Select All controls, and creates a new Permission Set in the same Salesforce org only after you explicitly confirm creation. A 10-stage progress view shows real-time status. A result report includes export actions (`Copy for Excel`, `Download CSV`).
-9. Optional UI-only scenario: enable `Hide DevOps Center Bar`, navigate to any Salesforce page where the DevOps Center bar is visible, and confirm that the bar is hidden. The module uses CSS injection and a MutationObserver to catch dynamically rendered elements.
-10. Optional UI-only scenario: enable `Change Set Buddy`, open an Outbound or Inbound Change Set page. Expected result: a search bar appears above the component table with multi-term filtering and a component type counter.
-11. Optional UI-only scenario: enable `Bulk Check`, open a Profile or Permission Set edit page in Setup. Expected result: a small master-checkbox pill with a live `checked / total` counter appears in checkbox-column headers. Toggling the module on while the page is already open should activate it without a reload, including inside classic Setup iframes.
-12. Optional UI-only scenario: enable `Console Formatter`, open DevTools on a supported authenticated org host (`*.my.salesforce.com`, `*.lightning.force.com`, or `*.salesforce-setup.com`), and log a proxy-heavy LWC/LWS value. Expected result: the value appears as a readable plain snapshot and `window.SFBoostConsole` is available. The formatter should not inject on public Salesforce properties such as `help.salesforce.com`.
+7. Login-page regression check for `0.7.1`: open a Salesforce login / unauthenticated page such as `https://<org>.sandbox.my.salesforce.com/?ec=302&startURL=...`. Expected result: `Environment Safeguard` does not show a badge, does not recolor the favicon, and does not prefix the tab title before login.
+8. Optional read-only API scenario: enable `Dependency Inspector`, open an Object Manager field page or Apex Class page, then click `Deep Scan`. Expected result: the extension issues a Tooling API query to the active org and shows dependency results grouped by component type in a modal.
+9. Optional write-capable scenario: enable `Profile to Permission Set`, open a Profile page in Setup, click `Extract to Permission Set`, and walk through the wizard. Expected result: the extension reads the profile, lets you choose permissions with per-category Select All controls, and creates a new Permission Set in the same Salesforce org only after you explicitly confirm creation. A 10-stage progress view shows real-time status. A result report includes export actions (`Copy for Excel`, `Download CSV`).
+10. Optional UI-only scenario: enable `Hide DevOps Center Bar`, navigate to any Salesforce page where the DevOps Center bar is visible, and confirm that the bar is hidden. For `0.7.1`, this can also be verified on Experience Builder pages hosted on `*.builder.salesforce-experience.com` such as `/sfsites/picasso/core/config/commeditor.jsp`. The module uses CSS injection and a MutationObserver to catch dynamically rendered elements.
+11. Optional UI-only scenario: enable `Change Set Buddy`, open an Outbound or Inbound Change Set page. Expected result: a search bar appears above the component table with multi-term filtering and a component type counter.
+12. Optional UI-only scenario: enable `Bulk Check`, open a Profile or Permission Set edit page in Setup. Expected result: a small master-checkbox pill with a live `checked / total` counter appears in checkbox-column headers. Toggling the module on while the page is already open should activate it without a reload, including inside classic Setup iframes.
+13. Optional UI-only scenario: enable `Console Formatter`, open DevTools on a supported authenticated org host (`*.my.salesforce.com`, `*.lightning.force.com`, or `*.salesforce-setup.com`), and log a proxy-heavy LWC/LWS value. Expected result: the value appears as a readable plain snapshot and `window.SFBoostConsole` is available. The formatter should not inject on public Salesforce properties such as `help.salesforce.com`.
 
 ## Disabled by default
 

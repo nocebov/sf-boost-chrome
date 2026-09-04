@@ -658,7 +658,9 @@ function createPaletteUI() {
 
       if (paletteOpen) closePalette();
 
-      if (result.active) {
+      if (result.blockedByExistingLog) {
+        showToast('An active Salesforce debug log already exists. SF Boost did not change it.');
+      } else if (result.active) {
         const expiresIn = result.expirationDate
           ? ` (expires ${new Date(result.expirationDate).toLocaleTimeString()})`
           : '';

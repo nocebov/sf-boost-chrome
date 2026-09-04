@@ -43,7 +43,7 @@ This packet describes the current `0.7.0` release line.
 
 | Module | Default | Access Level | Capability |
 |---|---|---|---|
-| Command Palette | enabled | write-capable | Read-only for navigation and metadata search (Profiles, Permission Sets, Flows, Apex Classes, Apex Triggers via SOQL/Tooling API). Write-capable for Toggle Debug Log (creates/deletes TraceFlag and DebugLevel in the active org). SOQL Query mode executes user-typed queries read-only. |
+| Command Palette | enabled | write-capable | Read-only for navigation and metadata search (Profiles, Permission Sets, Flows, Apex Classes, Apex Triggers via SOQL/Tooling API). Toggle Debug Log creates a TraceFlag and DebugLevel in the active org, and deletes only a TraceFlag previously created by SF Boost; manual active logs are left unchanged. SOQL Query mode executes user-typed queries read-only. |
 | Field Inspector | enabled | read-only | Read-only. Reads describe metadata from the active org only after the user toggles the inspector on a record page. |
 | Quick Copy | enabled | ui-only | UI-only. Copies visible record IDs locally to the clipboard on record pages and list views. |
 | Table Filter | enabled | ui-only | UI-only. Filters already-rendered table rows in the browser. Auto-scrolls Lightning tables to hydrate lazy-loaded rows. Auto-selects max pagination on Classic pages. |

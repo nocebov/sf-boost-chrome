@@ -91,7 +91,7 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     id: 'deep-dependency-inspector',
     name: 'Dependency Inspector',
     description: 'Tooling API dependency scan for Salesforce components',
-    info: 'Appears on Object Manager fields, Validation Rules, Apex Classes, Apex Triggers, Flows, LWC, and Aura pages. Shows what uses this component and what it depends on. Uses Salesforce Tooling API against the active org only after you click Deep Scan.',
+    info: 'Appears on Object Manager fields, Validation Rules, Apex Classes, Apex Triggers, Flows, LWC, Aura, and Classic Email Template detail pages. Shows what uses this component and what it depends on. For email templates, Used By also checks direct Email Alerts and assignment templates in active and inactive Classic Approval Processes. Uses read-only Tooling and Metadata API calls against the active org. Results are limited to references exposed by Salesforce APIs and your access permissions.',
     defaultEnabled: false,
     accessLevel: 'read-only',
   },

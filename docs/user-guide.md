@@ -81,7 +81,7 @@ Jump anywhere in Setup — or search Salesforce metadata — without clicking th
 - **50+ Setup shortcuts** — type "Users", "Profiles", "Flows", "Apex", "Object Manager", and more to jump directly to that Setup page
 - **Search sub-modes** — type "Profiles", "Permission Sets", "Flows", "Apex Classes", or "Apex Triggers" to enter a search mode that queries your org's metadata in real time
 - **Quick actions** — click the pills at the top of the palette, or press number keys `1`–`9` when the input is empty. Default actions: `1` Profiles · `2` Permission Sets · `3` Flows · `4` Classes · `5` Triggers · `6` Debug Log
-- **Toggle Debug Log** — creates a 30-minute FINEST trace flag for your user (or removes an existing one)
+- **Toggle Debug Log** — creates a 30-minute FINEST trace flag for your user, then removes only that SF Boost-created flag. If Salesforce already has a manual active log, SF Boost leaves it unchanged.
 - **Quick SOQL** — run a SOQL query and see results right in the palette
 - **Copy helpers** — copy the current Record ID or page URL
 
@@ -200,13 +200,17 @@ Extract permissions from any Salesforce Profile and create a new Permission Set 
 
 > Disabled by default · Read-only
 
-Find where a field or Apex class is used across the org.
+Find where a field, Apex class, or Classic Email Template is used across the org.
 
 **How to enable:** Open the SF Boost popup and toggle "Dependency Inspector" on.
 
 **How to use:** Navigate to an Object Manager field page or an Apex Class page. Click the **"Deep Scan"** button. Results appear in a modal, grouped by component type (Flows, Apex Classes, Triggers, LWC, Validation Rules, Layouts, etc.) with collapsible sections, icons, and counts. Click an item to copy its name, or use "Copy All".
 
 Uses the Salesforce Tooling API (`MetadataComponentDependency`).
+
+**Classic Email Templates:** Open a saved template detail page in Classic or in Setup → Classic Email Templates, then click **Deep Scan → Used By**. The scan combines indexed metadata references, direct Email Alerts (`WorkflowAlert.TemplateId`), and Approval Assignment Email Templates in active and inactive Classic Approval Processes (`ApprovalProcess.emailTemplate`). Approval definitions are read using Metadata API `listMetadata`/`readMetadata`, matching the template's full metadata name including its folder and namespace. Approval results include their active/inactive status and link to Setup. Refresh reruns the scan. Template lists and creation pages do not have a current template to scan.
+
+Coverage is limited to references exposed by these APIs. Dynamic Apex references, manual email use, Flow Approval Processes, and indirect uses through alerts are not fully covered. The Uses tab only checks the metadata index, not template content or merge fields. Metadata API access is required to read approval definitions; unavailable sources, unreadable definitions and the 1,000-process listing limit are reported as incomplete results. An empty result does not prove that a template is unused. Searches are read-only and cached per org for five minutes. No approval process or template is modified.
 
 ---
 

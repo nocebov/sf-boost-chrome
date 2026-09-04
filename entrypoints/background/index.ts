@@ -1,7 +1,15 @@
 import { onMessage } from '../../lib/messaging';
 import { getSessionFromCookie, clearSessionCache } from './session-manager';
-import { DEFAULTS, getEnabledModules, migrateStorage } from '../../lib/storage';
+import {
+  DEFAULTS,
+  getEnabledModules,
+  migrateStorage,
+  clearOwnedDebugTraceFlagId,
+  getOwnedDebugTraceFlagId,
+  setOwnedDebugTraceFlagId,
+} from '../../lib/storage';
 import { logger } from '../../lib/logger';
+import { getEmailTemplateApprovals } from './approval-template-usage';
 import { describeObject, executeSOQL, executeSOQLAll, executeToolingQueryAll, createPermissionSet, toggleDebugLog, getOrgLimits } from './api-client';
 import { buildInstanceUrl } from '../../lib/salesforce-urls';
 import { assertAllowedSalesforceInstanceUrl, isAllowedSalesforceDomain } from '../../lib/salesforce-utils';
@@ -214,6 +222,14 @@ export default defineBackground(() => {
     );
   });
 
+  // Read-only Classic Approval Process assignment-template references.
+  onMessage('getEmailTemplateApprovals', async (data, sender) => {
+    const instanceUrl = assertSenderMatchesInstanceUrl(sender, data.instanceUrl);
+    return withSession(instanceUrl, (sessionId) =>
+      getEmailTemplateApprovals(instanceUrl, sessionId, data.templateId),
+    );
+  });
+
   // Handle org limits request
   onMessage('getOrgLimits', async (data, sender) => {
     const instanceUrl = assertSenderMatchesInstanceUrl(sender, data.instanceUrl);
@@ -225,9 +241,18 @@ export default defineBackground(() => {
   // Handle debug log toggle
   onMessage('toggleDebugLog', async (data, sender) => {
     const instanceUrl = assertSenderMatchesInstanceUrl(sender, data.instanceUrl);
-    return withSession(instanceUrl, (sessionId) =>
-      toggleDebugLog(instanceUrl, sessionId),
+    const ownedTraceFlagId = await getOwnedDebugTraceFlagId(instanceUrl);
+    const result = await withSession(instanceUrl, (sessionId) =>
+      toggleDebugLog(instanceUrl, sessionId, ownedTraceFlagId),
     );
+    if (result.traceFlagId) {
+      await setOwnedDebugTraceFlagId(instanceUrl, result.traceFlagId);
+    } else if (result.removedOwnedTraceFlag || (ownedTraceFlagId && result.blockedByExistingLog)) {
+      // A stored ID that is no longer active must not make a later external
+      // TraceFlag look extension-owned.
+      await clearOwnedDebugTraceFlagId(instanceUrl);
+    }
+    return result;
   });
 
   // Handle Permission Set creation via long-lived port (keeps service worker alive during long operations)

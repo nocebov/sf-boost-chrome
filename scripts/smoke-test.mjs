@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 import puppeteer from 'puppeteer-core';
 import selfsigned from 'selfsigned';
+import { profilePageFixture, assertProfileToPermset } from './profile-to-permset-smoke.mjs';
+import { assertDeepScanPlacement } from './deep-scan-placement-smoke.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,9 +33,23 @@ const DEFAULT_ENABLED_MODULE_IDS = [
 ];
 
 const DEBUG = process.env.SFBOOST_SMOKE_DEBUG === '1';
+let activeSmokeStep = 'startup';
 
 function debug(...args) {
   if (DEBUG) console.log('[smoke]', ...args);
+}
+
+async function runSmokeStep(name, action) {
+  activeSmokeStep = name;
+  debug(`step:${name}:start`);
+  try {
+    return await action();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Smoke step "${name}" failed: ${message}`);
+  } finally {
+    debug(`step:${name}:done`);
+  }
 }
 
 function ensureBuiltExtension() {
@@ -274,7 +290,15 @@ async function startFixtureServer() {
         const requestUrl = new URL(req.url ?? '/', `https://${host}`);
 
         let body = null;
-        if (host === HOSTS.lightning && requestUrl.pathname === '/lightning/setup/Profiles/home') {
+        const profileFixture = host === HOSTS.lightning ? profilePageFixture(requestUrl) : null;
+        if (profileFixture) {
+          body = createHtmlPage('Profile route regression fixture', profileFixture);
+        } else if ((host === HOSTS.lightning || host === HOSTS.classic) &&
+            ['/lightning/setup/CommunicationTemplatesEmail/page', '/00X000000000123AAA'].includes(requestUrl.pathname)) {
+          const header = '<div class="bPageTitle"><h1 class="pageDescription">Welcome template</h1></div>';
+          body = createHtmlPage('Welcome template', requestUrl.searchParams.has('delayedHeader')
+            ? `<template id="delayed-header">${header}</template>` : header);
+        } else if (host === HOSTS.lightning && requestUrl.pathname === '/lightning/setup/Profiles/home') {
           body = buildLightningSetupHarness();
         } else if (host === HOSTS.classic && requestUrl.pathname === '/setup/forcecomHomepage.apexp') {
           body = buildClassicSetupHarness();
@@ -426,6 +450,25 @@ async function assertLightningContentPage(page, port) {
   debug('assertLightningContentPage:done');
 }
 
+async function assertSpaNavigationReinitializesTableFilter(page) {
+  debug('assertSpaNavigationReinitializesTableFilter:start');
+  await page.evaluate(() => {
+    const currentFilter = document.querySelector('.sfboost-table-filter input');
+    currentFilter?.setAttribute('data-smoke-before-navigation', 'true');
+    history.pushState({}, '', '/lightning/setup/Users/home');
+  });
+
+  await page.waitForFunction(
+    () => {
+      const nextFilter = document.querySelector('.sfboost-table-filter input');
+      return window.location.pathname === '/lightning/setup/Users/home' &&
+        nextFilter?.getAttribute('data-smoke-before-navigation') !== 'true';
+    },
+    { timeout: 10000 },
+  );
+  debug('assertSpaNavigationReinitializesTableFilter:done');
+}
+
 async function assertClassicContentPage(page, port) {
   debug('assertClassicContentPage:start');
   await page.goto(
@@ -435,6 +478,33 @@ async function assertClassicContentPage(page, port) {
   await page.waitForSelector('#sfboost-env-badge', { timeout: 10000 });
   await page.waitForSelector('.sfboost-table-filter input', { timeout: 10000 });
   debug('assertClassicContentPage:done');
+}
+
+async function assertEmailTemplateDependencyInspector(page, helperPage, port) {
+  await setEnabledModules(helperPage, [...DEFAULT_ENABLED_MODULE_IDS, 'deep-dependency-inspector']);
+  for (const target of [
+    `${buildOrigin(HOSTS.lightning, port)}/lightning/setup/CommunicationTemplatesEmail/page?address=%2F00X000000000123AAA&delayedHeader=1`,
+    `${buildOrigin(HOSTS.classic, port)}/00X000000000123AAA`,
+  ]) {
+    await page.goto(target, { waitUntil: 'domcontentloaded' });
+    await assertDeepScanPlacement(page);
+    await page.waitForSelector('#sfboost-deep-scan-btn:not([disabled])', { timeout: 10000 });
+    await page.click('#sfboost-deep-scan-btn');
+    await page.waitForSelector('#sfboost-dependency-modal', { timeout: 10000 });
+    // This isolated fixture intentionally has no Salesforce session. API errors
+    // must remain visible and retryable, rather than claiming no dependencies.
+    await page.waitForFunction(() => {
+      const modal = document.getElementById('sfboost-dependency-modal');
+      return modal?.textContent.includes('Could not check dependencies') &&
+        Array.from(modal.querySelectorAll('button')).some((button) => button.textContent === 'Retry');
+    }, { timeout: 10000 });
+    await page.evaluate(() => history.pushState({}, '', '/lightning/setup/CommunicationTemplatesEmail/home'));
+    await page.waitForFunction(() => !document.getElementById('sfboost-deep-scan-btn') &&
+      !document.getElementById('sfboost-dependency-modal'), { timeout: 10000 });
+    const layout = await page.$eval('.bPageTitle', (header) => header.style.display);
+    if (layout) throw new Error('Deep Scan did not restore the header layout after navigation');
+  }
+  await setEnabledModules(helperPage, DEFAULT_ENABLED_MODULE_IDS);
 }
 
 async function assertPopupPage(browser, extensionId, version) {
@@ -623,13 +693,23 @@ async function main() {
     helperPage = await createExtensionHelperPage(browser, extensionId);
     debug('helperPage:ready');
 
-    await assertPopupPage(browser, extensionId, version);
+    // Do not rely on a timing-sensitive storage migration to provide defaults.
+    // This also makes every smoke run start from the same module configuration.
+    await runSmokeStep('set default modules', () =>
+      setEnabledModules(helperPage, DEFAULT_ENABLED_MODULE_IDS),
+    );
+    await runSmokeStep('popup', () => assertPopupPage(browser, extensionId, version));
 
     const contentPage = await browser.newPage();
-    await assertLightningContentPage(contentPage, port);
-    await assertClassicContentPage(contentPage, port);
-    await assertBulkCheckRuntimeToggle(contentPage, helperPage, port);
-    await assertConsoleFormatterRuntime(contentPage, helperPage, port);
+    await runSmokeStep('Lightning default modules', () => assertLightningContentPage(contentPage, port));
+    await runSmokeStep('SPA navigation lifecycle', () => assertSpaNavigationReinitializesTableFilter(contentPage));
+    await runSmokeStep('Classic default modules', () => assertClassicContentPage(contentPage, port));
+    await runSmokeStep('Classic Email Template dependencies', () => assertEmailTemplateDependencyInspector(contentPage, helperPage, port));
+    await runSmokeStep('Profile extraction route and lifecycle guards', () => assertProfileToPermset(
+      contentPage, helperPage, buildOrigin(HOSTS.lightning, port), setEnabledModules, DEFAULT_ENABLED_MODULE_IDS,
+    ));
+    await runSmokeStep('Bulk Check runtime toggle', () => assertBulkCheckRuntimeToggle(contentPage, helperPage, port));
+    await runSmokeStep('Console Formatter runtime toggle', () => assertConsoleFormatterRuntime(contentPage, helperPage, port));
 
     await contentPage.close();
   } finally {
@@ -658,6 +738,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
+  console.error(`[smoke step: ${activeSmokeStep}]`, error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

@@ -58,7 +58,7 @@ Manual testing checklist before publishing a new version to the Chrome Web Store
 | 3.8 | Type "ps" (word initials) | "Permission Sets" appears in results |
 | 3.9 | Click a quick action button (e.g., "Flows") | Switches to Find Flows sub-mode, searches flows via SOQL |
 | 3.10 | Test "Quick SOQL" — enter a SOQL query | Results display correctly, errors show clear messages |
-| 3.11 | Test "Debug Log" toggle | Creates/deletes TraceFlag. Badge or message confirms state |
+| 3.11 | Test "Debug Log" toggle | Creates then removes only the TraceFlag created by SF Boost. With a pre-existing manual log, it leaves it unchanged and explains why. |
 | 3.12 | Open palette while in an input/textarea | Palette does NOT open (prevents shortcut conflicts) |
 | 3.13 | Edit quick actions: add a custom URL action | Custom action appears in the quick action bar |
 | 3.14 | Edit quick actions: hide a built-in action | Action disappears from the bar |

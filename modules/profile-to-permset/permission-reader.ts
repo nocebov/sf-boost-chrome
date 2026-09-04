@@ -1,5 +1,7 @@
 import { sendMessage } from '../../lib/messaging';
 import { assertSalesforceId } from '../../lib/salesforce-utils';
+import { isProfileId } from './profile-page';
+export { extractProfileIdFromUrl } from './profile-page';
 
 export interface ObjectPermission {
   SobjectType: string;
@@ -44,25 +46,6 @@ export interface ProfilePermissions {
   apexClassAccess: SetupEntityAccessItem[];
   vfPageAccess: SetupEntityAccessItem[];
   customPermissions: SetupEntityAccessItem[];
-}
-
-/**
- * Extract the Profile ID from the current URL.
- * Profile pages: /lightning/setup/EnhancedProfiles/page?address=/{profileId}
- */
-export function extractProfileIdFromUrl(): string | null {
-  const url = window.location.href;
-  const decodedUrl = decodeURIComponent(url);
-
-  // Enhanced Profiles: ?address=/{profileId}
-  const addressMatch = decodedUrl.match(/[?&]address=\/([a-zA-Z0-9]{15,18})/);
-  if (addressMatch?.[1]) return addressMatch[1];
-
-  // Direct profile URL with ID in path
-  const pathMatch = decodedUrl.match(/\/([a-zA-Z0-9]{15,18})(?:\/view|\?|$)/);
-  if (pathMatch?.[1]?.startsWith('00e')) return pathMatch[1]; // 00e = Profile keyPrefix
-
-  return null;
 }
 
 /** Convert a Permissions* API field name to a human-readable label. */
@@ -182,6 +165,7 @@ export async function readProfilePermissions(
 ): Promise<ProfilePermissions> {
   // Step 1: Find the PermissionSet associated with this Profile
   const safeProfileId = assertSalesforceId(profileId, 'profile');
+  if (!isProfileId(safeProfileId)) throw new Error('Invalid Profile ID');
   const psResult = await sendMessage('executeSOQLAll', {
     instanceUrl,
     query: `SELECT Id, Profile.Name FROM PermissionSet WHERE ProfileId = '${safeProfileId}' LIMIT 1`,

@@ -21,7 +21,10 @@ const WRAPPER_ID = 'sfboost-extract-permset-wrapper';
 const MODAL_ID = 'sfboost-permset-modal';
 
 let currentCtx: ModuleContext | null = null;
-let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryTimer: ReturnType<typeof setInterval> | null = null;
+let injectedButton: HTMLButtonElement | null = null;
+let injectedHeader: Element | null = null;
+const injectedDocuments = new Set<Document>();
 
 function getAccessibleDocuments(): Document[] {
   const docs = [document];
@@ -47,8 +50,10 @@ function getAccessibleDocuments(): Document[] {
   return docs;
 }
 
-function queryAcrossDocuments(selectors: string[]): Element | null {
+function queryProfileHeader(selectors: string[], profileId: string): Element | null {
   for (const doc of getAccessibleDocuments()) {
+    // A retained iframe from the previous Setup page must never supply a header.
+    if (extractProfileIdFromUrl(doc.URL)?.slice(0, 15) !== profileId.slice(0, 15)) continue;
     for (const selector of selectors) {
       const match = doc.querySelector(selector);
       if (match) return match;
@@ -58,15 +63,9 @@ function queryAcrossDocuments(selectors: string[]): Element | null {
   return null;
 }
 
-function removeByIdAcrossDocuments(id: string): void {
-  for (const doc of getAccessibleDocuments()) {
-    doc.getElementById(id)?.remove();
-  }
-}
-
 /** Remove the button wrapper and restore the header to its original position */
 function removeButtonAndWrapper(): void {
-  for (const doc of getAccessibleDocuments()) {
+  for (const doc of new Set([...getAccessibleDocuments(), ...injectedDocuments])) {
     doc.getElementById(BTN_ID)?.remove();
     const wrapper = doc.getElementById(WRAPPER_ID);
     if (wrapper) {
@@ -80,60 +79,31 @@ function removeButtonAndWrapper(): void {
       wrapper.remove();
     }
   }
-}
-
-function findByIdAcrossDocuments(id: string): HTMLElement | null {
-  for (const doc of getAccessibleDocuments()) {
-    const match = doc.getElementById(id);
-    if (match instanceof HTMLElement) return match;
-  }
-
-  return null;
+  injectedButton = null;
+  injectedHeader = null;
+  injectedDocuments.clear();
 }
 
 // --- Page Detection ---
 
 function isProfilePage(): boolean {
-  const pathname = window.location.pathname;
-  const href = window.location.href;
-
-  // Explicitly exclude PermSet pages (their IDs start with 0PS, not 00e)
-  if (pathname.includes('/lightning/setup/PermSets/') || pathname.includes('/lightning/setup/EnhancedPermSets/')) {
-    return false;
-  }
-
-  // Top-level Lightning URL
-  if (
-    pathname.includes('/lightning/setup/EnhancedProfiles/') ||
-    pathname.includes('/lightning/setup/Profiles/') ||
-    (pathname.includes('/lightning/setup/') && href.includes('address=') && href.includes('00e'))
-  ) {
-    return true;
-  }
-
-  // Inside Classic iframe or direct Classic URL
-  if (extractProfileIdFromUrl()) {
-    // If we're on a setup/profile page, it usually has classic page title headers
-    if (queryAcrossDocuments(['.setupcontent', '.bPageTitle'])) {
-      return true;
-    }
-    // Also support checking the path directly if the DOM isn't fully ready yet
-    if (pathname.match(/^\/00e[a-zA-Z0-9]{12,15}/)) {
-      return true;
-    }
-  }
-
-  return false;
+  return extractProfileIdFromUrl() !== null;
 }
 
 // --- Button Injection ---
 
 function injectButton(): boolean {
-  if (findByIdAcrossDocuments(BTN_ID)) return true;
-  if (!isProfilePage()) return false;
-
   const profileId = extractProfileIdFromUrl();
-  if (!profileId) return false;
+  if (!currentCtx || !profileId) {
+    if (injectedButton) removeButtonAndWrapper();
+    return false;
+  }
+  if (injectedButton?.isConnected && injectedHeader?.isConnected &&
+      injectedButton.dataset.profileId === profileId &&
+      getAccessibleDocuments().includes(injectedButton.ownerDocument) &&
+      extractProfileIdFromUrl(injectedButton.ownerDocument.URL)?.slice(0, 15) === profileId.slice(0, 15)) {
+    return true;
+  }
 
   // Clean up any orphaned wrapper from a previous injection before re-injecting
   removeButtonAndWrapper();
@@ -145,16 +115,27 @@ function injectButton(): boolean {
     '.bPageTitle .ptBody h2',
   ];
 
-  const header = queryAcrossDocuments(headerSelectors);
-  if (!header) return false;
+  const header = queryProfileHeader(headerSelectors, profileId);
+  if (!header?.parentElement) return false;
 
   const btn = createButton('Extract to Permission Set');
   btn.id = BTN_ID;
+  btn.dataset.profileId = profileId;
 
-  btn.addEventListener('click', () => openWizard(profileId));
+  btn.addEventListener('click', () => {
+    // Navigation can precede the registry's next tick. Never use a captured ID
+    // until both the current route and the document hosting the button agree.
+    if (!btn.isConnected || !getAccessibleDocuments().includes(btn.ownerDocument) ||
+        extractProfileIdFromUrl() !== profileId ||
+        extractProfileIdFromUrl(btn.ownerDocument.URL)?.slice(0, 15) !== profileId.slice(0, 15)) {
+      removeButtonAndWrapper();
+      return;
+    }
+    void openWizard(profileId);
+  });
 
   // Wrap header + button in a flex row so they sit on the same line
-  const wrapper = document.createElement('div');
+  const wrapper = header.ownerDocument.createElement('div');
   wrapper.id = WRAPPER_ID;
   wrapper.setAttribute('style', `display: flex; align-items: center; gap: ${tokens.space.md}; flex-wrap: wrap;`);
 
@@ -163,27 +144,24 @@ function injectButton(): boolean {
     wrapper.appendChild(header);
     wrapper.appendChild(btn);
   }
+  injectedButton = btn;
+  injectedHeader = header;
+  injectedDocuments.add(header.ownerDocument);
 
   return true;
 }
 
-function scheduleInject(attempts = 10, delay = 500): void {
+function scheduleInject(): void {
   cancelRetry();
-  let count = 0;
-  const tryInject = () => {
-    if (injectButton() || count >= attempts) {
-      retryTimer = null;
-      return;
-    }
-    count++;
-    retryTimer = setTimeout(tryInject, delay);
-  };
-  tryInject();
+  injectButton();
+  // Setup can replace its header or finish loading an iframe well after 5s.
+  // Reconcile while active, without adding duplicates or giving up permanently.
+  retryTimer = setInterval(injectButton, 500);
 }
 
 function cancelRetry(): void {
   if (retryTimer) {
-    clearTimeout(retryTimer);
+    clearInterval(retryTimer);
     retryTimer = null;
   }
 }
@@ -191,7 +169,7 @@ function cancelRetry(): void {
 // --- Wizard UI ---
 
 async function openWizard(profileId: string): Promise<void> {
-  if (!currentCtx) return;
+  if (!currentCtx || extractProfileIdFromUrl() !== profileId || document.getElementById(MODAL_ID)) return;
   const instanceUrl = currentCtx.pageContext.instanceUrl;
 
   // Close guard state
@@ -220,6 +198,7 @@ async function openWizard(profileId: string): Promise<void> {
 
   try {
     const permissions = await readProfilePermissions(instanceUrl, profileId);
+    if (!card.isConnected || extractProfileIdFromUrl() !== profileId) return;
     loadingDiv.remove();
     renderSelectionStep(card, permissions, instanceUrl, close, {
       onCreationFinished: (result) => {
@@ -229,6 +208,7 @@ async function openWizard(profileId: string): Promise<void> {
       onReportExported: () => { reportExported = true; },
     });
   } catch (err: any) {
+    if (!card.isConnected || extractProfileIdFromUrl() !== profileId) return;
     loadingDiv.remove();
     const errorDiv = document.createElement('div');
     errorDiv.setAttribute('style', `padding: ${tokens.space['2xl']}; color: ${tokens.color.error}; font-size: ${tokens.font.size.base};`);

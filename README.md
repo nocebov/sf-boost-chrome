@@ -24,7 +24,7 @@ Jump anywhere in Setup — or search Salesforce metadata — without clicking th
 Press `Alt+Shift+S`, start typing, hit Enter. Works for:
 - **50+ Setup shortcuts** — Users, Profiles, Roles, Permission Sets, Object Manager, Schema Builder, Picklists, Flows, Apex, LWC, Visualforce, Debug Logs, Change Sets, Security, Data Management, and more
 - **Search sub-modes** — Profiles, Permission Sets, Flows, Apex Classes, Apex Triggers
-- **Actions** — Toggle Debug Log (30 min), Quick SOQL Query, Copy current Record ID, Copy current page URL, open Developer Console
+- **Actions** — Toggle Debug Log (30 min; never replaces an existing manual log), Quick SOQL Query, Copy current Record ID, Copy current page URL, open Developer Console
 - **Quick action bar** — click the pills at the top, or press number keys `1`–`9` (when the input is empty). Click ✎ to customize: hide built-ins, add your own URL shortcuts, or reset to defaults
 
 Navigate with arrow keys, confirm with Enter, close with Escape. Backspace on empty input exits a sub-mode.

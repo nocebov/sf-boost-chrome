@@ -38,7 +38,7 @@ When the optional **Console Formatter** module is enabled, the extension also in
 Several features query the user's Salesforce org via the REST and Tooling APIs:
 - **Field Inspector** reads object describe metadata.
 - **Environment Safeguard** reads `Organization.TimeZoneSidKey` only when the optional org clock is enabled.
-- **Command Palette** queries Profiles, Permission Sets, Flows, Apex Classes, and Apex Triggers for metadata search, and can toggle debug logs (creating/deleting TraceFlag and DebugLevel records).
+- **Command Palette** queries Profiles, Permission Sets, Flows, Apex Classes, and Apex Triggers for metadata search, and can toggle debug logs (creating a TraceFlag and DebugLevel record; it deletes only TraceFlags previously created by SF Boost).
 - **Deep Dependency Inspector** queries `MetadataComponentDependency` via the Tooling API.
 - **Profile to Permission Set** reads profile permissions and creates a new Permission Set with associated permission records.
 

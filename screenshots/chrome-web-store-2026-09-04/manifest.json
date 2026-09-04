@@ -1,0 +1,30 @@
+{
+  "purpose": "Chrome Web Store listing screenshots for SF Boost",
+  "requirements": {
+    "dimensions": "1280x800 pixels",
+    "format": "JPEG",
+    "padding": "none (full bleed)"
+  },
+  "exports": [
+    {
+      "file": "01-profile-to-permission-set.jpg",
+      "source": "codex-clipboard-d14caaf4-4e31-4dae-9199-fac41c2c6542.png",
+      "composition": "center crop"
+    },
+    {
+      "file": "02-command-palette.jpg",
+      "source": "codex-clipboard-da358240-d727-4ae9-9afa-6bee7a89b53d.png",
+      "composition": "center crop"
+    },
+    {
+      "file": "03-extension-popup.jpg",
+      "source": "codex-clipboard-44d51b51-b28e-4e23-b106-6cfa4f98303b.png",
+      "composition": "left-aligned crop preserving the full extension popup"
+    },
+    {
+      "file": "04-dependency-inspector.jpg",
+      "source": "codex-clipboard-dbf8cd17-d3f6-4be0-95b2-15cbd8513750.png",
+      "composition": "center crop"
+    }
+  ]
+}

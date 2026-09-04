@@ -69,7 +69,7 @@ The `ModuleRegistry` (`modules/registry.ts`) manages lifecycle: `initModules` in
 - `executeToolingQuery` / `executeToolingQueryAll` — Tooling API queries with same pagination
 - `getCurrentUserId` — extracts user ID from the identity endpoint
 - `toolingCreate` / `toolingDelete` — Tooling API DML operations
-- `toggleDebugLog` — checks for existing active TraceFlag, deletes if found, otherwise creates a 30-minute FINEST trace flag using DebugLevel `SFBoost_Debug`
+- `toggleDebugLog` — creates a 30-minute FINEST TraceFlag using DebugLevel `SFBoost_Debug`; it deletes only a TraceFlag ID that SF Boost previously recorded, never an existing manual log
 - `createPermissionSet` — Multi-step REST creation with validation, dependency resolution (auto-adds parent object Read permissions), rollback on failure, and progress callbacks. Steps: validate field permissions, validate object permissions, create PermissionSet, add ObjectPermissions (multi-pass), FieldPermissions, UserPermissions (single PATCH), TabSettings, SetupEntityAccess. Handles duplicate insert errors gracefully.
 
 Authentication uses the `sid` cookie read via `chrome.cookies` in `session-manager.ts`.

@@ -9,7 +9,7 @@ const RETRYABLE_STATUSES = new Set([408, 429, 503]);
 
 // --- Fetch with retry & timeout ---
 
-async function fetchWithRetry(
+export async function fetchWithRetry(
   url: string,
   options: RequestInit,
   maxRetries = MAX_RETRIES,
@@ -268,10 +268,18 @@ export async function getOrgLimits(
 export async function toggleDebugLog(
   instanceUrl: string,
   sessionId: string,
-): Promise<{ active: boolean; expirationDate?: string }> {
+  ownedTraceFlagId?: string | null,
+): Promise<{
+  active: boolean;
+  expirationDate?: string;
+  traceFlagId?: string;
+  removedOwnedTraceFlag?: boolean;
+  blockedByExistingLog?: boolean;
+}> {
   const userId = await getCurrentUserId(instanceUrl, sessionId);
 
-  // Check for existing active TraceFlag
+  // Salesforce allows a single active developer TraceFlag per user. Never
+  // delete a flag unless this extension previously recorded its exact ID.
   const nowIso = new Date().toISOString();
   const existingResult = await executeToolingQuery(
     instanceUrl, sessionId,
@@ -279,11 +287,17 @@ export async function toggleDebugLog(
   );
 
   const existingFlags = existingResult?.records ?? [];
+  const ownedFlag = ownedTraceFlagId
+    ? existingFlags.find((flag: { Id?: unknown }) => flag.Id === ownedTraceFlagId)
+    : undefined;
 
-  // If active TraceFlag exists, delete it
+  if (ownedFlag?.Id) {
+    await toolingDelete(instanceUrl, sessionId, 'TraceFlag', ownedFlag.Id);
+    return { active: false, removedOwnedTraceFlag: true };
+  }
+
   if (existingFlags.length > 0) {
-    await toolingDelete(instanceUrl, sessionId, 'TraceFlag', existingFlags[0].Id);
-    return { active: false };
+    return { active: false, blockedByExistingLog: true };
   }
 
   // Find or create a DebugLevel
@@ -328,7 +342,7 @@ export async function toggleDebugLog(
 
   // Create TraceFlag with 30-minute expiration
   const expirationDate = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-  await toolingCreate(instanceUrl, sessionId, 'TraceFlag', {
+  const createdTraceFlag = await toolingCreate(instanceUrl, sessionId, 'TraceFlag', {
     TracedEntityId: userId,
     DebugLevelId: debugLevelId,
     LogType: 'DEVELOPER_LOG',
@@ -336,7 +350,7 @@ export async function toggleDebugLog(
     ExpirationDate: expirationDate,
   });
 
-  return { active: true, expirationDate };
+  return { active: true, expirationDate, traceFlagId: createdTraceFlag.id };
 }
 
 // --- Permission Set creation with partial failure tracking ---
@@ -705,13 +719,15 @@ async function validateFieldPermissions(
   const uniqueObjects = [...new Map(fieldPermissions.map((item) => [item.sobjectType.toLowerCase(), item.sobjectType])).values()];
   const describeResults = new Map<string, any | Error>();
 
-  await Promise.all(uniqueObjects.map(async (objectName) => {
+  // Profiles can span hundreds of objects. Keep describe traffic bounded so a
+  // large extraction does not burst the REST API before creation even starts.
+  await executeInBatches(uniqueObjects, async (objectName) => {
     try {
       describeResults.set(objectName.toLowerCase(), await describeObject(instanceUrl, sessionId, objectName));
     } catch (error) {
       describeResults.set(objectName.toLowerCase(), error instanceof Error ? error : new Error(formatUnknownError(error)));
     }
-  }));
+  });
 
   const validFieldPermissions: NormalizedFieldPermission[] = [];
 

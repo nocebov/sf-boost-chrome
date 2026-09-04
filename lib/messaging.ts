@@ -2,6 +2,10 @@
 import { assertAllowedSalesforceInstanceUrl, isAllowedSalesforceDomain } from './salesforce-utils';
 
 export interface MessageMap {
+  getEmailTemplateApprovals: {
+    data: { instanceUrl: string; templateId: string };
+    response: import('../entrypoints/background/approval-template-usage').ApprovalTemplateUsage;
+  };
   getSession: {
     data: { instanceUrl: string };
     response: { sessionId: string } | null;
@@ -24,7 +28,11 @@ export interface MessageMap {
   };
   toggleDebugLog: {
     data: { instanceUrl: string };
-    response: { active: boolean; expirationDate?: string };
+    response: {
+      active: boolean;
+      expirationDate?: string;
+      blockedByExistingLog?: boolean;
+    };
   };
   getOrgLimits: {
     data: { instanceUrl: string };

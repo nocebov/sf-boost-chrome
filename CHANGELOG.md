@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-04
+
+### Added
+- **Dependency Inspector — Classic Email Template coverage**: Deep Scan is available on saved Classic Email Template detail pages. Its **Used By** view combines the metadata dependency index, direct Email Alerts, and assignment-email-template references from active and inactive Classic Approval Processes. Results surface coverage limits and incomplete API reads instead of treating an empty result as proof that the template is unused.
+
+### Changed
+- **Profile to Permission Set hardening**: the extraction entry point now appears only on a verified Profile detail route, avoids stale-page and duplicate wizard launches, and recovers cleanly when Salesforce replaces the page header.
+- **Dependency Inspector placement**: Deep Scan waits for the actual Setup heading and remains beside it through asynchronous rendering and rerenders, without using a floating fallback button.
+- **Debug Log safety**: toggling a debug log records the exact TraceFlag created by SF Boost and removes only that flag. An existing manual Salesforce log is left unchanged and the user is told why.
+- **Permission extraction traffic**: large Profile extracts now bound concurrent object-describe requests to reduce REST API bursts.
+
 ### Changed
 - Documentation refreshed for the `0.7.0` release line: README, user guide, admin packet, reviewer notes, privacy policy, support docs, roadmap, QA checklist, contributing guide, and bug report template now reflect the shipped module set and current settings behavior.
 

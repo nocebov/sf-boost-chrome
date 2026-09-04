@@ -3,8 +3,9 @@ import type { SFBoostModule, ModuleContext } from '../types';
 import { sendMessage } from '../../lib/messaging';
 import { createModal, createSpinner, createButton, createFilterBar } from '../../lib/ui-helpers';
 import { showToast } from '../../lib/toast';
-import { escapeSoqlString, isAllowedSalesforceDomain, isValidSalesforceId } from '../../lib/salesforce-utils';
+import { isAllowedSalesforceDomain, isValidSalesforceId } from '../../lib/salesforce-utils';
 import { tokens } from '../../lib/design-tokens';
+import { scanDependencies, type DependencyRecord, type ScanDirection, type ScanResult } from './scan';
 import {
   buildEntityDefinitionLookupQuery,
   buildFieldDefinitionLookupQuery,
@@ -17,26 +18,24 @@ const BTN_ID = 'sfboost-deep-scan-btn';
 const MODAL_ID = 'sfboost-dependency-modal';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const INJECT_POLL_MS = 1_000;
-const INJECT_TIMEOUT_MS = 30_000;
 
 let currentCtx: ModuleContext | null = null;
-let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-let observer: MutationObserver | null = null;
-let injectInFlight = false;
+let injectedButton: HTMLButtonElement | null = null;
+let restoreHeaderLayout: (() => void) | null = null;
 let resolvedPageInfo: { url: string; info: PageInfo } | null = null;
 let pendingPageInfoPromise: Promise<PageInfo | null> | null = null;
 
 // --- Cache ---
 
 interface CacheEntry {
-  data: DependencyRecord[];
+  data: ScanResult;
   timestamp: number;
 }
 
 const cache = new Map<string, CacheEntry>();
 
-function getCached(key: string): DependencyRecord[] | null {
+function getCached(key: string): ScanResult | null {
   const entry = cache.get(key);
   if (!entry) return null;
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
@@ -46,7 +45,7 @@ function getCached(key: string): DependencyRecord[] | null {
   return entry.data;
 }
 
-function setCache(key: string, data: DependencyRecord[]): void {
+function setCache(key: string, data: ScanResult): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -163,6 +162,10 @@ function findNodeInDocumentOrIframes(selectors: string[]): Element | null {
 }
 
 function extractComponentNameFromHeader(): string | null {
+  if (parseDependencyComponentCandidate(window.location.pathname, window.location.search)?.componentType === 'EmailTemplate') {
+    const templateName = findNodeInDocumentOrIframes(['.bPageTitle .pageDescription'])?.textContent?.trim();
+    if (templateName) return templateName;
+  }
   const selectors = [
     'h1.slds-page-header__title',
     '.slds-page-header__title',
@@ -175,10 +178,6 @@ function extractComponentNameFromHeader(): string | null {
 }
 
 // --- Button Injection ---
-
-function hasInjectedButton(): boolean {
-  return Boolean(findNodeInDocumentOrIframes([`#${BTN_ID}`]));
-}
 
 function applyDisabledStyle(btn: HTMLButtonElement, reason: string): void {
   btn.disabled = true;
@@ -204,11 +203,12 @@ function probeComponentResolution(btn: HTMLButtonElement): void {
     });
 }
 
-function injectButton(): boolean {
-  if (hasInjectedButton()) return true;
+function injectButton(): void {
+  if (injectedButton?.isConnected) return;
+  removeButton();
 
   const candidate = parseDependencyComponentCandidate(window.location.pathname, window.location.search);
-  if (!candidate) return false;
+  if (!candidate) return;
 
   const isFlowBuilder = window.location.pathname.includes('/builder_platform_interaction/');
 
@@ -240,95 +240,61 @@ function injectButton(): boolean {
       ];
 
   const header = findNodeInDocumentOrIframes(headerSelectors);
+  // Salesforce renders Setup headers asynchronously. Wait for the real anchor
+  // instead of permanently choosing a floating button based on load timing.
+  if (!header?.parentElement) return;
 
   const btn = createButton('Deep Scan', { small: true });
   btn.id = BTN_ID;
+  btn.type = 'button';
+  btn.style.flexShrink = '0';
+  btn.style.whiteSpace = 'nowrap';
   btn.addEventListener('click', () => {
     void runDeepScan();
   });
 
-  if (header?.parentElement) {
-    btn.style.marginLeft = tokens.space.md;
-    btn.style.verticalAlign = 'middle';
+  btn.style.marginLeft = tokens.space.md;
+  btn.style.verticalAlign = 'middle';
 
-    if (isFlowBuilder) {
-      // In Flow Builder: prepend to the toolbar so button appears on the left side of existing actions
-      header.insertBefore(btn, header.firstChild);
-    } else {
-      // Make parent flex so button appears inline with the title
-      if (header.tagName === 'H1' || header.tagName === 'H2') {
-        Object.assign(header.parentElement.style, {
-          display: 'flex',
-          alignItems: 'center',
-          gap: tokens.space.md,
-        });
-      }
-      header.parentElement.insertBefore(btn, header.nextSibling);
-    }
+  if (isFlowBuilder) {
+    header.insertBefore(btn, header.firstChild);
   } else {
-    // Top-right fallback near the page header area (instead of bottom-right FAB)
-    Object.assign(btn.style, {
-      position: 'fixed',
-      top: '100px',
-      right: '24px',
-      zIndex: tokens.zIndex.fab,
-      borderRadius: tokens.radius.pill,
-      boxShadow: tokens.shadow.md,
-    });
-    document.body.appendChild(btn);
+    if (header.tagName === 'H1' || header.tagName === 'H2') {
+      const parent = header.parentElement;
+      const properties = ['display', 'align-items', 'gap', 'flex-wrap'];
+      const previous = properties.map((name) =>
+        [name, parent.style.getPropertyValue(name), parent.style.getPropertyPriority(name)] as const);
+      restoreHeaderLayout = () => {
+        for (const [name, value, priority] of previous) {
+          if (value) parent.style.setProperty(name, value, priority);
+          else parent.style.removeProperty(name);
+        }
+      };
+      btn.style.marginLeft = '0';
+      Object.assign(parent.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: tokens.space.md,
+        flexWrap: 'wrap',
+      });
+    }
+    header.parentElement.insertBefore(btn, header.nextSibling);
   }
+  injectedButton = btn;
 
   // Background check — gray out if component can't be resolved
   probeComponentResolution(btn);
-
-  return true;
-}
-
-function attemptInject(): void {
-  if (injectInFlight) return;
-
-  injectInFlight = true;
-  try {
-    if (injectButton()) {
-      disconnectObserver();
-    }
-  } finally {
-    injectInFlight = false;
-  }
 }
 
 function scheduleInject(): void {
-  disconnectObserver();
-  cancelRetry();
-  attemptInject();
-
-  observer = new MutationObserver(() => {
-    attemptInject();
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  pollTimer = setInterval(() => {
-    attemptInject();
-  }, INJECT_POLL_MS);
-
-  retryTimer = setTimeout(() => {
-    disconnectObserver();
-  }, INJECT_TIMEOUT_MS);
+  stopInjection();
+  injectButton();
+  // One lifecycle timer handles delayed headers, iframe loads and rerenders.
+  // Once mounted, each tick only checks the owned button's connection.
+  pollTimer = setInterval(injectButton, INJECT_POLL_MS);
 }
 
-function disconnectObserver(): void {
-  if (observer) {
-    observer.disconnect();
-    observer = null;
-  }
-  cancelRetry();
-}
-
-function cancelRetry(): void {
-  if (retryTimer) {
-    clearTimeout(retryTimer);
-    retryTimer = null;
-  }
+function stopInjection(): void {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
@@ -338,7 +304,14 @@ function cancelRetry(): void {
 // --- Navigation URLs for dependency types ---
 
 function getSetupUrl(type: string, id: string): string | null {
+  if (!isValidSalesforceId(id)) return null;
   switch (type) {
+    case 'ApprovalProcess':
+      return `/lightning/setup/ApprovalProcesses/page?address=%2F${id}`;
+    case 'WorkflowAlert':
+      return `/lightning/setup/WorkflowEmails/page?address=%2F${id}`;
+    case 'EmailTemplate':
+      return `/lightning/setup/CommunicationTemplatesEmail/page?address=%2F${id}`;
     case 'ApexClass':
       return `/lightning/setup/ApexClasses/page?address=%2F${id}`;
     case 'ApexTrigger':
@@ -358,44 +331,29 @@ function getSetupUrl(type: string, id: string): string | null {
 
 // --- Deep Scan ---
 
-interface DependencyRecord {
-  MetadataComponentId: string;
-  MetadataComponentName: string;
-  MetadataComponentType: string;
-  RefMetadataComponentId: string;
-  RefMetadataComponentName: string;
-  RefMetadataComponentType: string;
-}
-
-type ScanDirection = 'usedBy' | 'uses';
-
 async function fetchDependencies(
   instanceUrl: string,
   componentId: string,
+  componentType: string,
   direction: ScanDirection,
   forceRefresh = false
-): Promise<DependencyRecord[]> {
-  const cacheKey = `${componentId}:${direction}`;
+): Promise<ScanResult> {
+  const cacheKey = `${instanceUrl}:${componentType}:${componentId}:${direction}`;
 
   if (!forceRefresh) {
     const cached = getCached(cacheKey);
     if (cached) return cached;
   }
 
-  const safeId = escapeSoqlString(componentId);
-  const whereClause = direction === 'usedBy'
-    ? `RefMetadataComponentId = '${safeId}'`
-    : `MetadataComponentId = '${safeId}'`;
-  const query = `SELECT MetadataComponentId, MetadataComponentName, MetadataComponentType, RefMetadataComponentId, RefMetadataComponentName, RefMetadataComponentType FROM MetadataComponentDependency WHERE ${whereClause}`;
-
-  const result = await sendMessage('executeToolingQuery', { instanceUrl, query });
-  const records: DependencyRecord[] = result.records || [];
-  setCache(cacheKey, records);
-  return records;
+  const result = await scanDependencies(instanceUrl, componentId, componentType, direction);
+  setCache(cacheKey, result);
+  return result;
 }
 
 async function runDeepScan(forceRefresh = false): Promise<void> {
   if (!currentCtx) return;
+  const scanUrl = window.location.href;
+  const instanceUrl = currentCtx.pageContext.instanceUrl;
 
   const btn = findNodeInDocumentOrIframes([`#${BTN_ID}`]) as HTMLButtonElement | null;
 
@@ -416,6 +374,7 @@ async function runDeepScan(forceRefresh = false): Promise<void> {
   } catch {
     info = null;
   }
+  if (!currentCtx || window.location.href !== scanUrl) return;
 
   if (!info?.componentId) {
     if (btn) {
@@ -530,17 +489,20 @@ async function runDeepScan(forceRefresh = false): Promise<void> {
     bodyContainer.appendChild(loadingDiv);
 
     try {
-      const records = await fetchDependencies(
-        currentCtx!.pageContext.instanceUrl,
+      const result = await fetchDependencies(
+        instanceUrl,
         info!.componentId,
+        info!.componentType,
         direction,
         force
       );
+      if (activeTab !== direction || !bodyContainer.isConnected) return;
       bodyContainer.innerHTML = '';
-      renderResults(bodyContainer, records, direction);
+      renderResults(bodyContainer, result, direction);
     } catch (err: any) {
+      if (activeTab !== direction || !bodyContainer.isConnected) return;
       bodyContainer.innerHTML = '';
-      renderError(bodyContainer, err.message, direction);
+      renderError(bodyContainer, err.message, () => { void loadTab(direction, true); });
     }
   }
 
@@ -566,6 +528,9 @@ const TYPE_ICONS: Record<string, string> = {
   CustomField: '\u{1F3F7}',
   ValidationRule: '\u2705',
   WorkflowRule: '\u{1F527}',
+  WorkflowAlert: '\u{1F4E8}',
+  ApprovalProcess: '\u2705',
+  EmailTemplate: '\u{1F4E8}',
   Layout: '\u{1F4CB}',
   FlexiPage: '\u{1F4F1}',
   CustomObject: '\u{1F4C1}',
@@ -594,7 +559,7 @@ function extractDisplayRecords(records: DependencyRecord[], direction: ScanDirec
   }));
 }
 
-function renderError(container: HTMLElement, message: string, direction: ScanDirection): void {
+function renderError(container: HTMLElement, message: string, retry: () => void): void {
   const errorDiv = document.createElement('div');
   errorDiv.setAttribute('style', `padding: ${tokens.space['2xl']}; text-align: center;`);
 
@@ -604,33 +569,7 @@ function renderError(container: HTMLElement, message: string, direction: ScanDir
   errorDiv.appendChild(errorText);
 
   const retryBtn = createButton('Retry', { primary: false, small: true });
-  retryBtn.addEventListener('click', () => {
-    container.innerHTML = '';
-    // Re-trigger the same tab load with force refresh
-    const loadingDiv = document.createElement('div');
-    loadingDiv.setAttribute('style', `padding: 40px; display: flex; flex-direction: column; align-items: center; gap: ${tokens.space.lg};`);
-    loadingDiv.appendChild(createSpinner());
-    const loadingText = document.createElement('span');
-    loadingText.setAttribute('style', `color: ${tokens.color.textSalesforceGray}; font-size: ${tokens.font.size.base};`);
-    loadingText.textContent = 'Retrying...';
-    loadingDiv.appendChild(loadingText);
-    container.appendChild(loadingDiv);
-
-    void (async () => {
-      const info = await getComponentFromUrl();
-      if (!info || !currentCtx) return;
-
-      fetchDependencies(currentCtx.pageContext.instanceUrl, info.componentId, direction, true)
-        .then(records => {
-          container.innerHTML = '';
-          renderResults(container, records, direction);
-        })
-        .catch(err => {
-          container.innerHTML = '';
-          renderError(container, err.message, direction);
-        });
-    })();
-  });
+  retryBtn.addEventListener('click', retry);
   errorDiv.appendChild(retryBtn);
 
   container.appendChild(errorDiv);
@@ -638,20 +577,25 @@ function renderError(container: HTMLElement, message: string, direction: ScanDir
 
 function renderResults(
   container: HTMLElement,
-  records: DependencyRecord[],
+  result: ScanResult,
   direction: ScanDirection
 ): void {
   const body = document.createElement('div');
   body.setAttribute('style', `padding: ${tokens.space.lg} ${tokens.space['2xl']};`);
 
-  const displayRecords = extractDisplayRecords(records, direction);
+  const displayRecords = extractDisplayRecords(result.records, direction);
+
+  for (const notice of result.notices) {
+    const note = document.createElement('p');
+    note.textContent = notice;
+    note.setAttribute('style', `margin: 0 0 ${tokens.space.md}; color: ${tokens.color.textSecondary}; font-size: ${tokens.font.size.sm};`);
+    body.appendChild(note);
+  }
 
   if (displayRecords.length === 0) {
     const empty = document.createElement('div');
     empty.setAttribute('style', `padding: 24px; text-align: center; color: ${tokens.color.textSalesforceGray}; font-size: ${tokens.font.size.base};`);
-    empty.textContent = direction === 'usedBy'
-      ? 'No dependencies found. This component is not referenced anywhere.'
-      : 'No dependencies found. This component does not reference other components.';
+    empty.textContent = 'No dependencies found in the checked sources.';
     body.appendChild(empty);
     container.appendChild(body);
     return;
@@ -846,25 +790,10 @@ function renderGroupedSections(
 // --- Cleanup ---
 
 function removeButton(): void {
-  document.getElementById(BTN_ID)?.remove();
-
-  const iframes = document.querySelectorAll('iframe');
-  for (const iframe of Array.from(iframes)) {
-    try {
-      const src = iframe.src || '';
-      if (src) {
-        try {
-          const iframeUrl = new URL(src, window.location.origin);
-          if (!isAllowedSalesforceDomain(iframeUrl.hostname)) continue;
-        } catch { continue; }
-      }
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) continue;
-      doc.getElementById(BTN_ID)?.remove();
-    } catch (e) {
-      // Ignore
-    }
-  }
+  injectedButton?.remove();
+  injectedButton = null;
+  restoreHeaderLayout?.();
+  restoreHeaderLayout = null;
 }
 
 function removeModal(): void {
@@ -899,7 +828,7 @@ const deepDependencyInspector: SFBoostModule = {
   async onNavigate(ctx: ModuleContext) {
     currentCtx = ctx;
     clearResolvedPageInfo();
-    disconnectObserver();
+    stopInjection();
     removeButton();
     removeModal();
     if (isRelevantPage()) {
@@ -909,7 +838,7 @@ const deepDependencyInspector: SFBoostModule = {
 
   destroy() {
     clearResolvedPageInfo();
-    disconnectObserver();
+    stopInjection();
     removeButton();
     removeModal();
     currentCtx = null;

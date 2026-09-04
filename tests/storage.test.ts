@@ -60,6 +60,9 @@ import {
   resetQuickActionConfig,
   getCachedDescribe,
   setCachedDescribe,
+  getOwnedDebugTraceFlagId,
+  setOwnedDebugTraceFlagId,
+  clearOwnedDebugTraceFlagId,
   DEFAULTS,
 } from '../lib/storage';
 
@@ -279,6 +282,34 @@ describe('storage', () => {
 
       const result = await getQuickActionConfig();
       expect(result).toEqual({ hiddenBuiltInIds: [], customActions: [] });
+    });
+  });
+
+  // ─── SF Boost-owned debug TraceFlags ───────────────────────────────────
+
+  describe('owned debug TraceFlags', () => {
+    const prodUrl = 'https://acme.my.salesforce.com';
+    const sandboxUrl = 'https://acme--qa.my.salesforce.com';
+
+    it('returns null when SF Boost has not created a TraceFlag for the org', async () => {
+      await expect(getOwnedDebugTraceFlagId(prodUrl)).resolves.toBeNull();
+    });
+
+    it('stores TraceFlag ownership separately per org', async () => {
+      await setOwnedDebugTraceFlagId(prodUrl, '7tfProd000000001');
+      await setOwnedDebugTraceFlagId(sandboxUrl, '7tfQa00000000001');
+
+      await expect(getOwnedDebugTraceFlagId(prodUrl)).resolves.toBe('7tfProd000000001');
+      await expect(getOwnedDebugTraceFlagId(sandboxUrl)).resolves.toBe('7tfQa00000000001');
+    });
+
+    it('removes only the requested org ownership record', async () => {
+      await setOwnedDebugTraceFlagId(prodUrl, '7tfProd000000001');
+      await setOwnedDebugTraceFlagId(sandboxUrl, '7tfQa00000000001');
+      await clearOwnedDebugTraceFlagId(prodUrl);
+
+      await expect(getOwnedDebugTraceFlagId(prodUrl)).resolves.toBeNull();
+      await expect(getOwnedDebugTraceFlagId(sandboxUrl)).resolves.toBe('7tfQa00000000001');
     });
   });
 

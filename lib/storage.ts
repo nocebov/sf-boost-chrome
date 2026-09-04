@@ -289,6 +289,36 @@ export async function getAllModuleSettings(): Promise<Record<string, ModuleSetti
 // Describe cache with TTL (1 hour) and max entries
 const CACHE_TTL = 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 25;
+const OWNED_DEBUG_TRACE_FLAGS_KEY = 'ownedDebugTraceFlags';
+
+function getDebugTraceFlagStorageKey(instanceUrl: string): string {
+  return new URL(instanceUrl).origin.toLowerCase();
+}
+
+/**
+ * TraceFlags are destructive to toggle: Salesforce allows only one active log
+ * per user, so SF Boost must only remove a flag it created and recorded itself.
+ */
+export async function getOwnedDebugTraceFlagId(instanceUrl: string): Promise<string | null> {
+  const result = await chrome.storage.local.get(OWNED_DEBUG_TRACE_FLAGS_KEY);
+  const flags = result[OWNED_DEBUG_TRACE_FLAGS_KEY] as Record<string, unknown> | undefined;
+  const traceFlagId = flags?.[getDebugTraceFlagStorageKey(instanceUrl)];
+  return typeof traceFlagId === 'string' && traceFlagId.trim() ? traceFlagId : null;
+}
+
+export async function setOwnedDebugTraceFlagId(instanceUrl: string, traceFlagId: string): Promise<void> {
+  const result = await chrome.storage.local.get(OWNED_DEBUG_TRACE_FLAGS_KEY);
+  const flags = (result[OWNED_DEBUG_TRACE_FLAGS_KEY] as Record<string, string> | undefined) ?? {};
+  flags[getDebugTraceFlagStorageKey(instanceUrl)] = traceFlagId;
+  await chrome.storage.local.set({ [OWNED_DEBUG_TRACE_FLAGS_KEY]: flags });
+}
+
+export async function clearOwnedDebugTraceFlagId(instanceUrl: string): Promise<void> {
+  const result = await chrome.storage.local.get(OWNED_DEBUG_TRACE_FLAGS_KEY);
+  const flags = (result[OWNED_DEBUG_TRACE_FLAGS_KEY] as Record<string, string> | undefined) ?? {};
+  delete flags[getDebugTraceFlagStorageKey(instanceUrl)];
+  await chrome.storage.local.set({ [OWNED_DEBUG_TRACE_FLAGS_KEY]: flags });
+}
 
 export async function getCachedDescribe(key: string): Promise<any | null> {
   const result = await chrome.storage.local.get('describeCache');

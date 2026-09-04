@@ -54,6 +54,9 @@ export function parseDependencyComponentCandidate(
   pathname: string,
   search: string,
 ): DependencyComponentCandidate | null {
+  const templateId = parseClassicEmailTemplateId(pathname, search);
+  if (templateId) return { componentType: 'EmailTemplate', componentId: templateId };
+
   const fieldMatch = pathname.match(
     /^\/lightning\/setup\/ObjectManager\/([^/]+)\/FieldsAndRelationships\/([^/]+)\//,
   );
@@ -106,6 +109,33 @@ export function parseDependencyComponentCandidate(
     if (auraId) return { componentType: 'AuraDefinitionBundle', componentId: auraId };
   }
 
+  return null;
+}
+
+/** Read only the current detail target, never an ID from retURL or a list filter. */
+export function parseClassicEmailTemplateId(pathname: string, search: string): string | null {
+  const detailId = pathname.match(/^\/(00X[a-zA-Z0-9]{12}(?:[a-zA-Z0-9]{3})?)\/?$/)?.[1];
+  if (detailId) return detailId;
+
+  const params = new URLSearchParams(search);
+  if (pathname === '/email/author/emailtemplate.jsp') {
+    const id = params.get('id');
+    return id && /^00X(?:[a-zA-Z0-9]{12}|[a-zA-Z0-9]{15})$/.test(id) ? id : null;
+  }
+
+  if (/^\/lightning\/setup\/CommunicationTemplatesEmail\/(?:page|home)\/?$/.test(pathname)) {
+    const address = params.get('address');
+    // Salesforce wraps Classic detail URLs in the Lightning Setup address parameter.
+    // Require a relative local target; do not interpret IDs in arbitrary URLs.
+    if (!address?.startsWith('/') || address.startsWith('//')) return null;
+    try {
+      const target = new URL(address, 'https://local.invalid');
+      if (target.origin !== 'https://local.invalid' || target.pathname.startsWith('/lightning/')) return null;
+      return parseClassicEmailTemplateId(target.pathname, target.search);
+    } catch {
+      return null;
+    }
+  }
   return null;
 }
 

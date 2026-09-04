@@ -9,6 +9,32 @@ import {
 
 describe('deep-dependency-inspector utils', () => {
   describe('parseDependencyComponentCandidate', () => {
+    it.each([
+      ['/00X000000000123', ''],
+      ['/00X000000000123AAA', '?setupid=CommunicationTemplatesEmail'],
+      ['/email/author/emailtemplate.jsp', '?id=00X000000000123AAA'],
+      ['/lightning/setup/CommunicationTemplatesEmail/page', '?address=%2F00X000000000123AAA'],
+      ['/lightning/setup/CommunicationTemplatesEmail/home', '?address=%2Femail%2Fauthor%2Femailtemplate.jsp%3Fid%3D00X000000000123AAA'],
+    ])('recognizes the current Classic email template at %s', (path, search) => {
+      const result = parseDependencyComponentCandidate(path, search);
+      expect(result?.componentType).toBe('EmailTemplate');
+      expect(result?.componentId?.slice(0, 15)).toBe('00X000000000123');
+    });
+
+    it.each([
+      ['/lightning/setup/CommunicationTemplatesEmail/home', ''],
+      ['/lightning/setup/CommunicationTemplatesEmail/page', '?address=%2F00X'],
+      ['/lightning/setup/CommunicationTemplatesEmail/page', '?address=%2F00X%3FretURL%3D%2F00X000000000123AAA'],
+      ['/lightning/setup/CommunicationTemplatesEmail/page', '?address=https%3A%2F%2Fexample.com%2F00X000000000123AAA'],
+      ['/lightning/setup/CommunicationTemplatesEmail/page', '?address=%2F%2Fexample.com%2F00X000000000123AAA'],
+      ['/email/author/emailtemplate.jsp', '?id=001000000000123AAA&retURL=%2F00X000000000123AAA'],
+      ['/email/author/emailtemplate.jsp', '?id=00X000000000123AB'],
+      ['/00X000000000123AAA/edit', ''],
+      ['/unrelated', '?id=00X000000000123AAA'],
+    ])('does not mistake list, return, edit or unrelated URLs for a template: %s %s', (path, search) => {
+      expect(parseDependencyComponentCandidate(path, search)).toBeNull();
+    });
+
     it('treats field api-name URLs as resolvable custom-field candidates', () => {
       expect(
         parseDependencyComponentCandidate(
